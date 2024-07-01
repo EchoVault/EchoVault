@@ -28,23 +28,6 @@ import (
 	"strings"
 )
 
-func handleAuth(params internal.HandlerFuncParams) ([]byte, error) {
-	if len(params.Command) < 2 || len(params.Command) > 3 {
-		return nil, errors.New(constants.WrongArgsResponse)
-	}
-	acl, ok := params.GetACL().(*ACL)
-	if !ok {
-		return nil, errors.New("could not load ACL")
-	}
-	acl.LockUsers()
-	defer acl.UnlockUsers()
-
-	if err := acl.AuthenticateConnection(params.Context, params.Connection, params.Command); err != nil {
-		return nil, err
-	}
-	return []byte(constants.OkResponse), nil
-}
-
 func handleCat(params internal.HandlerFuncParams) ([]byte, error) {
 	if len(params.Command) > 3 {
 		return nil, errors.New(constants.WrongArgsResponse)
@@ -496,23 +479,6 @@ func handleSave(params internal.HandlerFuncParams) ([]byte, error) {
 
 func Commands() []internal.Command {
 	return []internal.Command{
-		{
-			Command:    "auth",
-			Module:     constants.ACLModule,
-			Categories: []string{constants.ConnectionCategory, constants.SlowCategory},
-			Description: `(AUTH [username] password) 
-Authenticates the connection. If the username is not provided, the connection will be authenticated against the
-default ACL user. Otherwise, it is authenticated against the ACL user with the provided username.`,
-			Sync: false,
-			KeyExtractionFunc: func(cmd []string) (internal.KeyExtractionFuncResult, error) {
-				return internal.KeyExtractionFuncResult{
-					Channels:  make([]string, 0),
-					ReadKeys:  make([]string, 0),
-					WriteKeys: make([]string, 0),
-				}, nil
-			},
-			HandlerFunc: handleAuth,
-		},
 		{
 			Command:     "acl",
 			Module:      constants.ACLModule,

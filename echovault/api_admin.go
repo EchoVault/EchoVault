@@ -66,7 +66,7 @@ type CommandHandlerFunc func(params CommandHandlerFuncParams) ([]byte, error)
 type CommandHandlerFuncParams struct {
 	Context   context.Context
 	Command   []string
-	KeysExist func(keys []string) map[string]bool
+	KeysExist func(ctx context.Context, keys []string) map[string]bool
 	GetValues func(ctx context.Context, keys []string) map[string]interface{}
 	SetValues func(ctx context.Context, entries map[string]interface{}) error
 }

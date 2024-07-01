@@ -33,8 +33,10 @@ type ApplyRequest struct {
 	Type         string   `json:"Type"` // command | delete-key
 	ServerID     string   `json:"ServerID"`
 	ConnectionID string   `json:"ConnectionID"`
+	Protocol     int      `json:"Protocol"`
+	Database     int      `json:"Database"`
 	CMD          []string `json:"CMD"`
-	Key          string   `json:"Key"`
+	Key          string   `json:"Key"` // Optional: Used with delete-key type to specify which key to delete.
 }
 
 type ApplyResponse struct {
@@ -43,8 +45,26 @@ type ApplyResponse struct {
 }
 
 type SnapshotObject struct {
-	State                      map[string]KeyData
+	State                      map[int]map[string]KeyData
 	LatestSnapshotMilliseconds int64
+}
+
+// ServerInfo holds information about the server/node.
+type ServerInfo struct {
+	Server  string
+	Version string
+	Id      string
+	Mode    string
+	Role    string
+	Modules []string
+}
+
+// ConnectionInfo holds information about the connection
+type ConnectionInfo struct {
+	Id       uint64 // Connection id.
+	Name     string // Alias name for this connection.
+	Protocol int    // The RESP protocol used by the client. Can be either 2 or 3.
+	Database int    // Database index currently being used by the connection.
 }
 
 // KeyExtractionFuncResult is the return type of the KeyExtractionFunc for the command/subcommand.
@@ -72,11 +92,11 @@ type HandlerFuncParams struct {
 	// Do not write the response directly to the connection, return it from the function.
 	Connection *net.Conn
 	// KeysExist returns a map that specifies which keys exist in the keyspace.
-	KeysExist func(keys []string) map[string]bool
+	KeysExist func(ctx context.Context, keys []string) map[string]bool
 	// GetExpiry returns the expiry time of a key.
-	GetExpiry func(key string) time.Time
+	GetExpiry func(ctx context.Context, key string) time.Time
 	// DeleteKey deletes the specified key. Returns an error if the deletion was unsuccessful.
-	DeleteKey func(key string) error
+	DeleteKey func(ctx context.Context, key string) error
 	// GetValues retrieves the values from the specified keys.
 	// Non-existent keys will be nil.
 	GetValues func(ctx context.Context, keys []string) map[string]interface{}
@@ -102,7 +122,7 @@ type HandlerFuncParams struct {
 	TakeSnapshot func() error
 	// RewriteAOF triggers a compaction of the commands logs by the EchoVault instance.
 	RewriteAOF func() error
-	// GetLatestSnapshotTime returns the latest snapshot timestamp
+	// GetLatestSnapshotTime returns the latest snapshot timestamp.
 	GetLatestSnapshotTime func() int64
 	// LoadModule loads the provided module with the given args passed to the module's
 	// key extraction and handler functions.
@@ -112,6 +132,19 @@ type HandlerFuncParams struct {
 	UnloadModule func(module string)
 	// ListModules returns the list of modules loaded in the EchoVault instance.
 	ListModules func() []string
+	// SetConnectionInfo sets the connection's protocol and clientname.
+	SetConnectionInfo func(conn *net.Conn, clientname string, protocol int, database int)
+	// GetConnectionInfo returns information about the current connection.
+	GetConnectionInfo func(conn *net.Conn) ConnectionInfo
+	// GetServerInfo returns information about the server when requested by commands such as HELLO.
+	GetServerInfo func() ServerInfo
+	// SwapDBs swaps two databases,
+	// so that immediately all the clients connected to a given database will see the data of the other database,
+	// and the other way around.
+	SwapDBs func(database1, database2 int)
+	// FlushDB flushes the specified database keys. It accepts the integer index of the database to be flushed.
+	// If -1 is passed as the index, then all databases will be flushed.
+	Flush func(database int)
 }
 
 // HandlerFunc is a functions described by a command where the bulk of the command handling is done.

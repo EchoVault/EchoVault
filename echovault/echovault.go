@@ -60,23 +60,41 @@ type EchoVault struct {
 	// the new number is the new connection's ID.
 	connId atomic.Uint64
 
-	storeLock *sync.RWMutex               // Global read-write mutex for entire store.
-	store     map[string]internal.KeyData // Data store to hold the keys and their associated data, expiry time, etc.
+	// connInfo holds the connection information for embedded and TCP clients.
+	// It keeps track of the protocol and database that each client is operating on.
+	connInfo struct {
+		mut        *sync.RWMutex                         // RWMutex for the connInfo object.
+		tcpClients map[*net.Conn]internal.ConnectionInfo // Map that holds connection information for each TCP client.
+		embedded   internal.ConnectionInfo               // Information for the embedded connection.
+	}
+
+	// Global read-write mutex for entire store.
+	storeLock *sync.RWMutex
+	// Data store to hold the keys and their associated data, expiry time, etc.
+	// The int key on the outer map represents the database index.
+	// Each database has a map that has a string key and the key data (value and expiry time).
+	store map[int]map[string]internal.KeyData
 
 	// Holds all the keys that are currently associated with an expiry.
 	keysWithExpiry struct {
-		rwMutex sync.RWMutex // Mutex as only one process should be able to update this list at a time.
-		keys    []string     // string slice of the volatile keys
+		// Mutex as only one process should be able to update this list at a time.
+		rwMutex sync.RWMutex
+		// A map holding a string slice of the volatile keys for each database.
+		keys map[int][]string
 	}
 	// LFU cache used when eviction policy is allkeys-lfu or volatile-lfu.
 	lfuCache struct {
-		mutex sync.Mutex        // Mutex as only one goroutine can edit the LFU cache at a time.
-		cache eviction.CacheLFU // LFU cache represented by a min head.
+		// Mutex as only one goroutine can edit the LFU cache at a time.
+		mutex sync.Mutex
+		// LFU cache for each database represented by a min heap.
+		cache map[int]*eviction.CacheLFU
 	}
 	// LRU cache used when eviction policy is allkeys-lru or volatile-lru.
 	lruCache struct {
-		mutex sync.Mutex        // Mutex as only one goroutine can edit the LRU at a time.
-		cache eviction.CacheLRU // LRU cache represented by a max head.
+		// Mutex as only one goroutine can edit the LRU at a time.
+		mutex sync.Mutex
+		// LRU cache represented by a max heap.
+		cache map[int]*eviction.CacheLRU
 	}
 
 	// Holds the list of all commands supported by the echovault.
@@ -126,11 +144,32 @@ func WithConfig(config config.Config) func(echovault *EchoVault) {
 // This functions accepts the WithContext, WithConfig and WithCommands options.
 func NewEchoVault(options ...func(echovault *EchoVault)) (*EchoVault, error) {
 	echovault := &EchoVault{
-		clock:         clock.NewClock(),
-		context:       context.Background(),
-		config:        config.DefaultConfig(),
-		storeLock:     &sync.RWMutex{},
-		store:         make(map[string]internal.KeyData),
+		clock:   clock.NewClock(),
+		context: context.Background(),
+		config:  config.DefaultConfig(),
+		connInfo: struct {
+			mut        *sync.RWMutex
+			tcpClients map[*net.Conn]internal.ConnectionInfo
+			embedded   internal.ConnectionInfo
+		}{
+			mut:        &sync.RWMutex{},
+			tcpClients: make(map[*net.Conn]internal.ConnectionInfo),
+			embedded: internal.ConnectionInfo{
+				Id:       0,
+				Name:     "embedded",
+				Protocol: 2,
+				Database: 0,
+			},
+		},
+		storeLock: &sync.RWMutex{},
+		store:     make(map[int]map[string]internal.KeyData),
+		keysWithExpiry: struct {
+			rwMutex sync.RWMutex
+			keys    map[int][]string
+		}{
+			rwMutex: sync.RWMutex{},
+			keys:    make(map[int][]string),
+		},
 		commandsRWMut: sync.RWMutex{},
 		commands: func() []internal.Command {
 			var commands []internal.Command
@@ -184,16 +223,18 @@ func NewEchoVault(options ...func(echovault *EchoVault)) (*EchoVault, error) {
 			FinishSnapshot:        echovault.finishSnapshot,
 			SetLatestSnapshotTime: echovault.setLatestSnapshot,
 			GetHandlerFuncParams:  echovault.getHandlerFuncParams,
-			DeleteKey: func(key string) error {
+			DeleteKey: func(ctx context.Context, key string) error {
 				echovault.storeLock.Lock()
 				defer echovault.storeLock.Unlock()
-				return echovault.deleteKey(key)
+				return echovault.deleteKey(ctx, key)
 			},
-			GetState: func() map[string]internal.KeyData {
-				state := make(map[string]internal.KeyData)
-				for k, v := range echovault.getState() {
-					if data, ok := v.(internal.KeyData); ok {
-						state[k] = data
+			GetState: func() map[int]map[string]internal.KeyData {
+				state := make(map[int]map[string]internal.KeyData)
+				for database, store := range echovault.getState() {
+					for k, v := range store {
+						if data, ok := v.(internal.KeyData); ok {
+							state[database][k] = data
+						}
 					}
 				}
 				return state
@@ -219,23 +260,27 @@ func NewEchoVault(options ...func(echovault *EchoVault)) (*EchoVault, error) {
 			snapshot.WithFinishSnapshotFunc(echovault.finishSnapshot),
 			snapshot.WithSetLatestSnapshotTimeFunc(echovault.setLatestSnapshot),
 			snapshot.WithGetLatestSnapshotTimeFunc(echovault.getLatestSnapshotTime),
-			snapshot.WithGetStateFunc(func() map[string]internal.KeyData {
-				state := make(map[string]internal.KeyData)
-				for k, v := range echovault.getState() {
-					if data, ok := v.(internal.KeyData); ok {
-						state[k] = data
+			snapshot.WithGetStateFunc(func() map[int]map[string]internal.KeyData {
+				state := make(map[int]map[string]internal.KeyData)
+				for database, data := range echovault.getState() {
+					state[database] = make(map[string]internal.KeyData)
+					for key, value := range data {
+						if keyData, ok := value.(internal.KeyData); ok {
+							state[database][key] = keyData
+						}
 					}
 				}
 				return state
 			}),
-			snapshot.WithSetKeyDataFunc(func(key string, data internal.KeyData) {
-				ctx := context.Background()
+			snapshot.WithSetKeyDataFunc(func(database int, key string, data internal.KeyData) {
+				ctx := context.WithValue(context.Background(), "Database", database)
 				if err := echovault.setValues(ctx, map[string]interface{}{key: data.Value}); err != nil {
 					log.Println(err)
 				}
 				echovault.setExpiry(ctx, key, data.ExpireAt, false)
 			}),
 		)
+
 		// Set up standalone AOF engine
 		aofEngine, err := aof.NewAOFEngine(
 			aof.WithClock(echovault.clock),
@@ -243,24 +288,29 @@ func NewEchoVault(options ...func(echovault *EchoVault)) (*EchoVault, error) {
 			aof.WithStrategy(echovault.config.AOFSyncStrategy),
 			aof.WithStartRewriteFunc(echovault.startRewriteAOF),
 			aof.WithFinishRewriteFunc(echovault.finishRewriteAOF),
-			aof.WithGetStateFunc(func() map[string]internal.KeyData {
-				state := make(map[string]internal.KeyData)
-				for k, v := range echovault.getState() {
-					if data, ok := v.(internal.KeyData); ok {
-						state[k] = data
+			aof.WithGetStateFunc(func() map[int]map[string]internal.KeyData {
+				state := make(map[int]map[string]internal.KeyData)
+				for database, data := range echovault.getState() {
+					state[database] = make(map[string]internal.KeyData)
+					for key, value := range data {
+						if keyData, ok := value.(internal.KeyData); ok {
+							state[database][key] = keyData
+						}
 					}
 				}
 				return state
 			}),
-			aof.WithSetKeyDataFunc(func(key string, value internal.KeyData) {
-				ctx := context.Background()
+			aof.WithSetKeyDataFunc(func(database int, key string, value internal.KeyData) {
+				ctx := context.WithValue(context.Background(), "Database", database)
 				if err := echovault.setValues(ctx, map[string]interface{}{key: value.Value}); err != nil {
 					log.Println(err)
 				}
 				echovault.setExpiry(ctx, key, value.ExpireAt, false)
 			}),
-			aof.WithHandleCommandFunc(func(command []byte) {
-				_, err := echovault.handleCommand(context.Background(), command, nil, true, false)
+			aof.WithHandleCommandFunc(func(database int, command []byte) {
+				ctx := context.WithValue(context.Background(), "Protocol", 2)
+				ctx = context.WithValue(ctx, "Database", database)
+				_, err := echovault.handleCommand(ctx, command, nil, true, false)
 				if err != nil {
 					log.Println(err)
 				}
@@ -282,9 +332,19 @@ func NewEchoVault(options ...func(echovault *EchoVault)) (*EchoVault, error) {
 			for {
 				select {
 				case <-ticker.C:
-					if err := echovault.evictKeysWithExpiredTTL(context.Background()); err != nil {
-						log.Printf("evict with ttl: %v\n", err)
+					// Run key eviction for each database that has volatile keys.
+					wg := sync.WaitGroup{}
+					for database, _ := range echovault.keysWithExpiry.keys {
+						wg.Add(1)
+						ctx := context.WithValue(context.Background(), "Database", database)
+						go func(ctx context.Context, wg *sync.WaitGroup) {
+							if err := echovault.evictKeysWithExpiredTTL(ctx); err != nil {
+								log.Printf("evict with ttl: %v\n", err)
+							}
+							wg.Done()
+						}(ctx, &wg)
 					}
+					wg.Wait()
 				case <-echovault.stopTTL:
 					break
 				}
@@ -300,9 +360,8 @@ func NewEchoVault(options ...func(echovault *EchoVault)) (*EchoVault, error) {
 		// Initialise raft and memberlist
 		echovault.raft.RaftInit(echovault.context)
 		echovault.memberList.MemberListInit(echovault.context)
-		if echovault.raft.IsRaftLeader() {
-			echovault.initialiseCaches()
-		}
+		// Initialise caches
+		echovault.initialiseCaches()
 	}
 
 	if !echovault.isInCluster() {
@@ -422,9 +481,20 @@ func (server *EchoVault) handleConnection(conn net.Conn) {
 
 	w, r := io.Writer(conn), io.Reader(conn)
 
+	// Generate connection ID
 	cid := server.connId.Add(1)
 	ctx := context.WithValue(server.context, internal.ContextConnID("ConnectionID"),
 		fmt.Sprintf("%s-%d", server.context.Value(internal.ContextServerID("ServerID")), cid))
+
+	// Set the default connection information
+	server.connInfo.mut.Lock()
+	server.connInfo.tcpClients[&conn] = internal.ConnectionInfo{
+		Id:       cid,
+		Name:     "",
+		Protocol: 2,
+		Database: 0,
+	}
+	server.connInfo.mut.Unlock()
 
 	defer func() {
 		log.Printf("closing connection %d...", cid)
@@ -576,20 +646,25 @@ func (server *EchoVault) ShutDown() {
 }
 
 func (server *EchoVault) initialiseCaches() {
-	// Set up LFU cache
+	// Set up LFU cache.
 	server.lfuCache = struct {
 		mutex sync.Mutex
-		cache eviction.CacheLFU
+		cache map[int]*eviction.CacheLFU
 	}{
 		mutex: sync.Mutex{},
-		cache: eviction.NewCacheLFU(),
+		cache: make(map[int]*eviction.CacheLFU),
 	}
-	// set up LRU cache
+	// set up LRU cache.
 	server.lruCache = struct {
 		mutex sync.Mutex
-		cache eviction.CacheLRU
+		cache map[int]*eviction.CacheLRU
 	}{
 		mutex: sync.Mutex{},
-		cache: eviction.NewCacheLRU(),
+		cache: make(map[int]*eviction.CacheLRU),
+	}
+	// Initialise caches for each preloaded database.
+	for database, _ := range server.store {
+		server.lfuCache.cache[database] = eviction.NewCacheLFU()
+		server.lruCache.cache[database] = eviction.NewCacheLRU()
 	}
 }

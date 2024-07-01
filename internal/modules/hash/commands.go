@@ -32,7 +32,7 @@ func handleHSET(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 	entries := make(map[string]interface{})
 
 	if len(params.Command[2:])%2 != 0 {
@@ -84,7 +84,7 @@ func handleHGET(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 	fields := params.Command[2:]
 
 	if !keyExists {
@@ -131,7 +131,7 @@ func handleHSTRLEN(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 	fields := params.Command[2:]
 
 	if !keyExists {
@@ -178,7 +178,7 @@ func handleHVALS(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 
 	if !keyExists {
 		return []byte("*0\r\n"), nil
@@ -215,7 +215,7 @@ func handleHRANDFIELD(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 
 	count := 1
 	if len(params.Command) >= 3 {
@@ -327,7 +327,7 @@ func handleHLEN(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 
 	if !keyExists {
 		return []byte(":0\r\n"), nil
@@ -348,7 +348,7 @@ func handleHKEYS(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 
 	if !keyExists {
 		return []byte("*0\r\n"), nil
@@ -374,7 +374,7 @@ func handleHINCRBY(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 	field := params.Command[2]
 
 	var intIncrement int
@@ -458,7 +458,7 @@ func handleHGETALL(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 
 	if !keyExists {
 		return []byte("*0\r\n"), nil
@@ -494,7 +494,7 @@ func handleHEXISTS(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 	field := params.Command[2]
 
 	if !keyExists {
@@ -520,7 +520,7 @@ func handleHDEL(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 	fields := params.Command[2:]
 
 	if !keyExists {

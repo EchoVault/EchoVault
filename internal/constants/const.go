@@ -14,6 +14,8 @@
 
 package constants
 
+const Version = "0.8.0" // Next EchoVault version. Update this before each release.
+
 const (
 	ACLModule        = "acl"
 	AdminModule      = "admin"

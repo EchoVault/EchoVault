@@ -40,7 +40,7 @@ func KeyExtractionFunc(cmd []string, args ...string) ([]string, []string, error)
 func HandlerFunc(
 	ctx context.Context,
 	command []string,
-	keysExist func(keys []string) map[string]bool,
+	keysExist func(ctx context.Context, keys []string) map[string]bool,
 	getValues func(ctx context.Context, keys []string) map[string]interface{},
 	setValues func(ctx context.Context, entries map[string]interface{}) error,
 	args ...string) ([]byte, error) {
@@ -50,7 +50,7 @@ func HandlerFunc(
 		return nil, err
 	}
 	key := readKeys[0]
-	exists := keysExist(readKeys)[key]
+	exists := keysExist(ctx, readKeys)[key]
 
 	if !exists {
 		return []byte(":0\r\n"), nil

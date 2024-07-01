@@ -46,10 +46,10 @@ type Engine struct {
 	snapshotThreshold         uint64
 	startSnapshotFunc         func()
 	finishSnapshotFunc        func()
-	getStateFunc              func() map[string]internal.KeyData
+	getStateFunc              func() map[int]map[string]internal.KeyData
 	setLatestSnapshotTimeFunc func(msec int64)
 	getLatestSnapshotTimeFunc func() int64
-	setKeyDataFunc            func(key string, data internal.KeyData)
+	setKeyDataFunc            func(database int, key string, data internal.KeyData)
 }
 
 func WithClock(clock clock.Clock) func(engine *Engine) {
@@ -88,7 +88,7 @@ func WithFinishSnapshotFunc(f func()) func(engine *Engine) {
 	}
 }
 
-func WithGetStateFunc(f func() map[string]internal.KeyData) func(engine *Engine) {
+func WithGetStateFunc(f func() map[int]map[string]internal.KeyData) func(engine *Engine) {
 	return func(engine *Engine) {
 		engine.getStateFunc = f
 	}
@@ -106,7 +106,7 @@ func WithGetLatestSnapshotTimeFunc(f func() int64) func(engine *Engine) {
 	}
 }
 
-func WithSetKeyDataFunc(f func(key string, data internal.KeyData)) func(engine *Engine) {
+func WithSetKeyDataFunc(f func(database int, key string, data internal.KeyData)) func(engine *Engine) {
 	return func(engine *Engine) {
 		engine.setKeyDataFunc = f
 	}
@@ -121,10 +121,10 @@ func NewSnapshotEngine(options ...func(engine *Engine)) *Engine {
 		snapshotThreshold:  1000,
 		startSnapshotFunc:  func() {},
 		finishSnapshotFunc: func() {},
-		getStateFunc: func() map[string]internal.KeyData {
-			return map[string]internal.KeyData{}
+		getStateFunc: func() map[int]map[string]internal.KeyData {
+			return make(map[int]map[string]internal.KeyData)
 		},
-		setKeyDataFunc:            func(key string, data internal.KeyData) {},
+		setKeyDataFunc:            func(database int, key string, data internal.KeyData) {},
 		setLatestSnapshotTimeFunc: func(msec int64) {},
 		getLatestSnapshotTimeFunc: func() int64 {
 			return 0
@@ -347,15 +347,16 @@ func (engine *Engine) Restore() error {
 	}
 
 	snapshotObject := new(internal.SnapshotObject)
-
 	if err = json.Unmarshal(sd, snapshotObject); err != nil {
 		return err
 	}
 
 	engine.setLatestSnapshotTimeFunc(snapshotObject.LatestSnapshotMilliseconds)
 
-	for key, data := range internal.FilterExpiredKeys(engine.clock.Now(), snapshotObject.State) {
-		engine.setKeyDataFunc(key, data)
+	for database, data := range internal.FilterExpiredKeys(engine.clock.Now(), snapshotObject.State) {
+		for key, keyData := range data {
+			engine.setKeyDataFunc(database, key, keyData)
+		}
 	}
 
 	log.Println("successfully restored latest snapshot")

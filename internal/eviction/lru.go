@@ -31,13 +31,13 @@ type CacheLRU struct {
 	entries []*EntryLRU
 }
 
-func NewCacheLRU() CacheLRU {
+func NewCacheLRU() *CacheLRU {
 	cache := CacheLRU{
 		keys:    make(map[string]bool),
 		entries: make([]*EntryLRU, 0),
 	}
 	heap.Init(&cache)
-	return cache
+	return &cache
 }
 
 func (cache *CacheLRU) Len() int {

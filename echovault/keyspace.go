@@ -21,33 +21,120 @@ import (
 	"fmt"
 	"github.com/echovault/echovault/internal"
 	"github.com/echovault/echovault/internal/constants"
+	"github.com/echovault/echovault/internal/eviction"
 	"log"
 	"math/rand"
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
-func (server *EchoVault) keysExist(keys []string) map[string]bool {
+// SwapDBs swaps every TCP client connection from database1 over to database2.
+// It also swaps every TCP client connection from database2 over to database1.
+// This only affects TCP connections, it does not swap the logical database currently
+// being used by the embedded API.
+func (server *EchoVault) SwapDBs(database1, database2 int) {
+	// If the databases are the same, skip the swap.
+	if database1 == database2 {
+		return
+	}
+
+	// If any of the databases does not exist, create them.
+	server.storeLock.Lock()
+	for _, database := range []int{database1, database2} {
+		if server.store[database] == nil {
+			server.createDatabase(database)
+		}
+	}
+	server.storeLock.Unlock()
+
+	// Swap the connections for each database.
+	server.connInfo.mut.Lock()
+	defer server.connInfo.mut.Unlock()
+	for connection, info := range server.connInfo.tcpClients {
+		switch info.Database {
+		case database1:
+			server.connInfo.tcpClients[connection] = internal.ConnectionInfo{
+				Id:       info.Id,
+				Name:     info.Name,
+				Protocol: info.Protocol,
+				Database: database2,
+			}
+		case database2:
+			server.connInfo.tcpClients[connection] = internal.ConnectionInfo{
+				Id:       info.Id,
+				Name:     info.Name,
+				Protocol: info.Protocol,
+				Database: database1,
+			}
+		}
+	}
+}
+
+// Flush flushes all the data from the database at the specified index.
+// When -1 is passed, all the logical databases are cleared.
+func (server *EchoVault) Flush(database int) {
+	server.storeLock.Lock()
+	defer server.storeLock.Unlock()
+
+	server.keysWithExpiry.rwMutex.Lock()
+	defer server.keysWithExpiry.rwMutex.Unlock()
+
+	server.lfuCache.mutex.Lock()
+	defer server.lfuCache.mutex.Unlock()
+
+	server.lruCache.mutex.Lock()
+	defer server.lruCache.mutex.Unlock()
+
+	if database == -1 {
+		for db, _ := range server.store {
+			// Clear db store.
+			clear(server.store[db])
+			// Clear db volatile key tracker.
+			clear(server.keysWithExpiry.keys[db])
+			// Clear db LFU cache.
+			server.lfuCache.cache[db] = eviction.NewCacheLFU()
+			// Clear db LRU cache.
+			server.lruCache.cache[db] = eviction.NewCacheLRU()
+		}
+		return
+	}
+
+	// Clear db store.
+	clear(server.store[database])
+	// Clear db volatile key tracker.
+	clear(server.keysWithExpiry.keys[database])
+	// Clear db LFU cache.
+	server.lfuCache.cache[database] = eviction.NewCacheLFU()
+	// Clear db LRU cache.
+	server.lruCache.cache[database] = eviction.NewCacheLRU()
+}
+
+func (server *EchoVault) keysExist(ctx context.Context, keys []string) map[string]bool {
 	server.storeLock.RLock()
 	defer server.storeLock.RUnlock()
+
+	database := ctx.Value("Database").(int)
 
 	exists := make(map[string]bool, len(keys))
 
 	for _, key := range keys {
-		_, ok := server.store[key]
+		_, ok := server.store[database][key]
 		exists[key] = ok
 	}
 
 	return exists
 }
 
-func (server *EchoVault) getExpiry(key string) time.Time {
+func (server *EchoVault) getExpiry(ctx context.Context, key string) time.Time {
 	server.storeLock.RLock()
 	defer server.storeLock.RUnlock()
 
-	entry, ok := server.store[key]
+	database := ctx.Value("Database").(int)
+
+	entry, ok := server.store[database][key]
 	if !ok {
 		return time.Time{}
 	}
@@ -59,10 +146,12 @@ func (server *EchoVault) getValues(ctx context.Context, keys []string) map[strin
 	server.storeLock.Lock()
 	defer server.storeLock.Unlock()
 
+	database := ctx.Value("Database").(int)
+
 	values := make(map[string]interface{}, len(keys))
 
 	for _, key := range keys {
-		entry, ok := server.store[key]
+		entry, ok := server.store[database][key]
 		if !ok {
 			values[key] = nil
 			continue
@@ -71,7 +160,7 @@ func (server *EchoVault) getValues(ctx context.Context, keys []string) map[strin
 		if entry.ExpireAt != (time.Time{}) && entry.ExpireAt.Before(server.clock.Now()) {
 			if !server.isInCluster() {
 				// If in standalone mode, delete the key directly.
-				err := server.deleteKey(key)
+				err := server.deleteKey(ctx, key)
 				if err != nil {
 					log.Printf("keyExists: %+v\n", err)
 				}
@@ -112,12 +201,19 @@ func (server *EchoVault) setValues(ctx context.Context, entries map[string]inter
 		return errors.New("max memory reached, key value not set")
 	}
 
+	database := ctx.Value("Database").(int)
+
+	// If database does not exist, create it.
+	if server.store[database] == nil {
+		server.createDatabase(database)
+	}
+
 	for key, value := range entries {
 		expireAt := time.Time{}
-		if _, ok := server.store[key]; ok {
-			expireAt = server.store[key].ExpireAt
+		if _, ok := server.store[database][key]; ok {
+			expireAt = server.store[database][key].ExpireAt
 		}
-		server.store[key] = internal.KeyData{
+		server.store[database][key] = internal.KeyData{
 			Value:    value,
 			ExpireAt: expireAt,
 		}
@@ -143,15 +239,17 @@ func (server *EchoVault) setExpiry(ctx context.Context, key string, expireAt tim
 	server.storeLock.Lock()
 	defer server.storeLock.Unlock()
 
-	server.store[key] = internal.KeyData{
-		Value:    server.store[key].Value,
+	database := ctx.Value("Database").(int)
+
+	server.store[database][key] = internal.KeyData{
+		Value:    server.store[database][key].Value,
 		ExpireAt: expireAt,
 	}
 
 	// If the slice of keys associated with expiry time does not contain the current key, add the key.
 	server.keysWithExpiry.rwMutex.Lock()
-	if !slices.Contains(server.keysWithExpiry.keys, key) {
-		server.keysWithExpiry.keys = append(server.keysWithExpiry.keys, key)
+	if !slices.Contains(server.keysWithExpiry.keys[database], key) {
+		server.keysWithExpiry.keys[database] = append(server.keysWithExpiry.keys[database], key)
 	}
 	server.keysWithExpiry.rwMutex.Unlock()
 
@@ -160,29 +258,31 @@ func (server *EchoVault) setExpiry(ctx context.Context, key string, expireAt tim
 		go func(ctx context.Context, key string) {
 			err := server.updateKeysInCache(ctx, []string{key})
 			if err != nil {
-				log.Printf("SetKeyExpiry error: %+v\n", err)
+				log.Printf("setExpiry error: %+v\n", err)
 			}
 		}(ctx, key)
 	}
 }
 
-func (server *EchoVault) deleteKey(key string) error {
+func (server *EchoVault) deleteKey(ctx context.Context, key string) error {
+	database := ctx.Value("Database").(int)
+
 	// Delete the key from keyLocks and store.
-	delete(server.store, key)
+	delete(server.store[database], key)
 
 	// Remove key from slice of keys associated with expiry.
 	server.keysWithExpiry.rwMutex.Lock()
 	defer server.keysWithExpiry.rwMutex.Unlock()
-	server.keysWithExpiry.keys = slices.DeleteFunc(server.keysWithExpiry.keys, func(k string) bool {
+	server.keysWithExpiry.keys[database] = slices.DeleteFunc(server.keysWithExpiry.keys[database], func(k string) bool {
 		return k == key
 	})
 
-	// Remove the key from the cache.
+	// Remove the key from the cache associated with the database.
 	switch {
 	case slices.Contains([]string{constants.AllKeysLFU, constants.VolatileLFU}, server.config.EvictionPolicy):
-		server.lfuCache.cache.Delete(key)
+		server.lfuCache.cache[database].Delete(key)
 	case slices.Contains([]string{constants.AllKeysLRU, constants.VolatileLRU}, server.config.EvictionPolicy):
-		server.lruCache.cache.Delete(key)
+		server.lruCache.cache[database].Delete(key)
 	}
 
 	log.Printf("deleted key %s\n", key)
@@ -190,7 +290,27 @@ func (server *EchoVault) deleteKey(key string) error {
 	return nil
 }
 
-func (server *EchoVault) getState() map[string]interface{} {
+func (server *EchoVault) createDatabase(database int) {
+	// Create database store.
+	server.store[database] = make(map[string]internal.KeyData)
+
+	// Set volatile keys tracker for database.
+	server.keysWithExpiry.rwMutex.Lock()
+	defer server.keysWithExpiry.rwMutex.Unlock()
+	server.keysWithExpiry.keys[database] = make([]string, 0)
+
+	// Create database LFU cache.
+	server.lfuCache.mutex.Lock()
+	defer server.lfuCache.mutex.Unlock()
+	server.lfuCache.cache[database] = eviction.NewCacheLFU()
+
+	// Create database LRU cache.
+	server.lruCache.mutex.Lock()
+	defer server.lruCache.mutex.Unlock()
+	server.lruCache.cache[database] = eviction.NewCacheLRU()
+}
+
+func (server *EchoVault) getState() map[int]map[string]interface{} {
 	// Wait unit there's no state mutation or copy in progress before starting a new copy process.
 	for {
 		if !server.stateCopyInProgress.Load() && !server.stateMutationInProgress.Load() {
@@ -198,9 +318,12 @@ func (server *EchoVault) getState() map[string]interface{} {
 			break
 		}
 	}
-	data := make(map[string]interface{})
-	for k, v := range server.store {
-		data[k] = v
+	data := make(map[int]map[string]interface{})
+	for db, store := range server.store {
+		data[db] = make(map[string]interface{})
+		for k, v := range store {
+			data[db][k] = v
+		}
 	}
 	server.stateCopyInProgress.Store(false)
 	return data
@@ -209,6 +332,7 @@ func (server *EchoVault) getState() map[string]interface{} {
 // updateKeysInCache updates either the key access count or the most recent access time in the cache
 // depending on whether an LFU or LRU strategy was used.
 func (server *EchoVault) updateKeysInCache(ctx context.Context, keys []string) error {
+	database := ctx.Value("Database").(int)
 	for _, key := range keys {
 		// Only update cache when in standalone mode or when raft leader.
 		if server.isInCluster() || (server.isInCluster() && !server.raft.IsRaftLeader()) {
@@ -221,29 +345,56 @@ func (server *EchoVault) updateKeysInCache(ctx context.Context, keys []string) e
 		switch strings.ToLower(server.config.EvictionPolicy) {
 		case constants.AllKeysLFU:
 			server.lfuCache.mutex.Lock()
-			server.lfuCache.cache.Update(key)
+			server.lfuCache.cache[database].Update(key)
 			server.lfuCache.mutex.Unlock()
 		case constants.AllKeysLRU:
 			server.lruCache.mutex.Lock()
-			server.lruCache.cache.Update(key)
+			server.lruCache.cache[database].Update(key)
 			server.lruCache.mutex.Unlock()
 		case constants.VolatileLFU:
 			server.lfuCache.mutex.Lock()
-			if server.store[key].ExpireAt != (time.Time{}) {
-				server.lfuCache.cache.Update(key)
+			if server.store[database][key].ExpireAt != (time.Time{}) {
+				server.lfuCache.cache[database].Update(key)
 			}
 			server.lfuCache.mutex.Unlock()
 		case constants.VolatileLRU:
 			server.lruCache.mutex.Lock()
-			if server.store[key].ExpireAt != (time.Time{}) {
-				server.lruCache.cache.Update(key)
+			if server.store[database][key].ExpireAt != (time.Time{}) {
+				server.lruCache.cache[database].Update(key)
 			}
 			server.lruCache.mutex.Unlock()
 		}
-		if err := server.adjustMemoryUsage(ctx); err != nil {
-			return fmt.Errorf("updateKeysInCache: %+v", err)
-		}
 	}
+
+	server.storeLock.Lock()
+	defer server.storeLock.Unlock()
+
+	wg := sync.WaitGroup{}
+	errChan := make(chan error)
+	doneChan := make(chan struct{})
+
+	for db, _ := range server.store {
+		wg.Add(1)
+		ctx := context.WithValue(ctx, "Database", db)
+		go func(ctx context.Context, database int, wg *sync.WaitGroup, errChan *chan error) {
+			if err := server.adjustMemoryUsage(ctx); err != nil {
+				*errChan <- fmt.Errorf("adjustMemoryUsade database %d", database)
+			}
+			wg.Done()
+		}(ctx, db, &wg, &errChan)
+	}
+
+	go func() {
+		wg.Wait()
+		doneChan <- struct{}{}
+	}()
+
+	select {
+	case err := <-errChan:
+		return fmt.Errorf("adjustMemoryUsage error: %+v", err)
+	case <-doneChan:
+	}
+
 	return nil
 }
 
@@ -253,6 +404,9 @@ func (server *EchoVault) adjustMemoryUsage(ctx context.Context) error {
 	if server.config.MaxMemory == 0 {
 		return nil
 	}
+
+	database := ctx.Value("Database").(int)
+
 	// Check if memory usage is above max-memory.
 	// If it is, pop items from the cache until we get under the limit.
 	var memStats runtime.MemStats
@@ -261,7 +415,7 @@ func (server *EchoVault) adjustMemoryUsage(ctx context.Context) error {
 	if memStats.HeapInuse < server.config.MaxMemory {
 		return nil
 	}
-	// Force a garbage collection first before we start evicting key.
+	// Force a garbage collection first before we start evicting keys.
 	runtime.GC()
 	runtime.ReadMemStats(&memStats)
 	if memStats.HeapInuse < server.config.MaxMemory {
@@ -270,8 +424,6 @@ func (server *EchoVault) adjustMemoryUsage(ctx context.Context) error {
 	// We've done a GC, but we're still at or above the max memory limit.
 	// Start a loop that evicts keys until either the heap is empty or
 	// we're below the max memory limit.
-	server.storeLock.Lock()
-	defer server.storeLock.Unlock()
 	switch {
 	case slices.Contains([]string{constants.AllKeysLFU, constants.VolatileLFU}, strings.ToLower(server.config.EvictionPolicy)):
 		// Remove keys from LFU cache until we're below the max memory limit or
@@ -280,14 +432,14 @@ func (server *EchoVault) adjustMemoryUsage(ctx context.Context) error {
 		defer server.lfuCache.mutex.Unlock()
 		for {
 			// Return if cache is empty
-			if server.lfuCache.cache.Len() == 0 {
-				return fmt.Errorf("adjsutMemoryUsage -> LFU cache empty")
+			if server.lfuCache.cache[database].Len() == 0 {
+				return fmt.Errorf("adjustMemoryUsage -> LFU cache empty")
 			}
 
-			key := heap.Pop(&server.lfuCache.cache).(string)
+			key := heap.Pop(server.lfuCache.cache[database]).(string)
 			if !server.isInCluster() {
 				// If in standalone mode, directly delete the key
-				if err := server.deleteKey(key); err != nil {
+				if err := server.deleteKey(ctx, key); err != nil {
 					return fmt.Errorf("adjustMemoryUsage -> LFU cache eviction: %+v", err)
 				}
 			} else if server.isInCluster() && server.raft.IsRaftLeader() {
@@ -296,7 +448,6 @@ func (server *EchoVault) adjustMemoryUsage(ctx context.Context) error {
 					return fmt.Errorf("adjustMemoryUsage -> LFU cache eviction: %+v", err)
 				}
 			}
-
 			// Run garbage collection
 			runtime.GC()
 			// Return if we're below max memory
@@ -312,14 +463,14 @@ func (server *EchoVault) adjustMemoryUsage(ctx context.Context) error {
 		defer server.lruCache.mutex.Unlock()
 		for {
 			// Return if cache is empty
-			if server.lruCache.cache.Len() == 0 {
-				return fmt.Errorf("adjsutMemoryUsage -> LRU cache empty")
+			if server.lruCache.cache[database].Len() == 0 {
+				return fmt.Errorf("adjustMemoryUsage -> LRU cache empty")
 			}
 
-			key := heap.Pop(&server.lruCache.cache).(string)
+			key := heap.Pop(server.lruCache.cache[database]).(string)
 			if !server.isInCluster() {
 				// If in standalone mode, directly delete the key.
-				if err := server.deleteKey(key); err != nil {
+				if err := server.deleteKey(ctx, key); err != nil {
 					return fmt.Errorf("adjustMemoryUsage -> LRU cache eviction: %+v", err)
 				}
 			} else if server.isInCluster() && server.raft.IsRaftLeader() {
@@ -342,36 +493,38 @@ func (server *EchoVault) adjustMemoryUsage(ctx context.Context) error {
 		// Remove random keys until we're below the max memory limit
 		// or there are no more keys remaining.
 		for {
-			server.storeLock.Lock()
 			// If there are no keys, return error
 			if len(server.store) == 0 {
 				err := errors.New("no keys to evict")
-				server.storeLock.Unlock()
 				return fmt.Errorf("adjustMemoryUsage -> all keys random: %+v", err)
 			}
-			// Get random key
+			// Get random key in the database
 			idx := rand.Intn(len(server.store))
-			for key, _ := range server.store {
-				if idx == 0 {
-					if !server.isInCluster() {
-						// If in standalone mode, directly delete the key
-						if err := server.deleteKey(key); err != nil {
-							return fmt.Errorf("adjustMemoryUsage -> all keys random: %+v", err)
+			for db, data := range server.store {
+				if db == database {
+					for key, _ := range data {
+						if idx == 0 {
+							if !server.isInCluster() {
+								// If in standalone mode, directly delete the key
+								if err := server.deleteKey(ctx, key); err != nil {
+									return fmt.Errorf("adjustMemoryUsage -> all keys random: %+v", err)
+								}
+							} else if server.isInCluster() && server.raft.IsRaftLeader() {
+								if err := server.raftApplyDeleteKey(ctx, key); err != nil {
+									return fmt.Errorf("adjustMemoryUsage -> all keys random: %+v", err)
+								}
+							}
+							// Run garbage collection
+							runtime.GC()
+							// Return if we're below max memory
+							runtime.ReadMemStats(&memStats)
+							if memStats.HeapInuse < server.config.MaxMemory {
+								return nil
+							}
 						}
-					} else if server.isInCluster() && server.raft.IsRaftLeader() {
-						if err := server.raftApplyDeleteKey(ctx, key); err != nil {
-							return fmt.Errorf("adjustMemoryUsage -> all keys random: %+v", err)
-						}
-					}
-					// Run garbage collection
-					runtime.GC()
-					// Return if we're below max memory
-					runtime.ReadMemStats(&memStats)
-					if memStats.HeapInuse < server.config.MaxMemory {
-						return nil
+						idx--
 					}
 				}
-				idx--
 			}
 		}
 	case slices.Contains([]string{constants.VolatileRandom}, strings.ToLower(server.config.EvictionPolicy)):
@@ -381,12 +534,12 @@ func (server *EchoVault) adjustMemoryUsage(ctx context.Context) error {
 			// Get random volatile key
 			server.keysWithExpiry.rwMutex.RLock()
 			idx := rand.Intn(len(server.keysWithExpiry.keys))
-			key := server.keysWithExpiry.keys[idx]
+			key := server.keysWithExpiry.keys[database][idx]
 			server.keysWithExpiry.rwMutex.RUnlock()
 
 			if !server.isInCluster() {
 				// If in standalone mode, directly delete the key
-				if err := server.deleteKey(key); err != nil {
+				if err := server.deleteKey(ctx, key); err != nil {
 					return fmt.Errorf("adjustMemoryUsage -> volatile keys random: %+v", err)
 				}
 			} else if server.isInCluster() && server.raft.IsRaftLeader() {
@@ -421,10 +574,12 @@ func (server *EchoVault) evictKeysWithExpiredTTL(ctx context.Context) error {
 
 	server.keysWithExpiry.rwMutex.RLock()
 
+	database := ctx.Value("Database").(int)
+
 	// Sample size should be the configured sample size, or the size of the keys with expiry,
 	// whichever one is smaller.
 	sampleSize := int(server.config.EvictionSample)
-	if len(server.keysWithExpiry.keys) < sampleSize {
+	if len(server.keysWithExpiry.keys[database]) < sampleSize {
 		sampleSize = len(server.keysWithExpiry.keys)
 	}
 	keys := make([]string, sampleSize)
@@ -438,7 +593,7 @@ func (server *EchoVault) evictKeysWithExpiredTTL(ctx context.Context) error {
 		for {
 			// Retry retrieval of a random key until we find a key that is not already in the list of sampled keys.
 			idx = rand.Intn(len(server.keysWithExpiry.keys))
-			key = server.keysWithExpiry.keys[idx]
+			key = server.keysWithExpiry.keys[database][idx]
 			if !slices.Contains(keys, key) {
 				keys[i] = key
 				break
@@ -454,7 +609,7 @@ func (server *EchoVault) evictKeysWithExpiredTTL(ctx context.Context) error {
 		// Delete the expired key
 		deletedCount += 1
 		if !server.isInCluster() {
-			if err := server.deleteKey(k); err != nil {
+			if err := server.deleteKey(ctx, k); err != nil {
 				return fmt.Errorf("evictKeysWithExpiredTTL -> standalone delete: %+v", err)
 			}
 		} else if server.isInCluster() && server.raft.IsRaftLeader() {

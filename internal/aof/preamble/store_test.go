@@ -29,61 +29,55 @@ func Test_PreambleStore(t *testing.T) {
 	tests := []struct {
 		name               string
 		directory          string
-		state              map[string]internal.KeyData
-		preambleReadWriter preamble.PreambleReadWriter
-		wantState          map[string]internal.KeyData
+		state              map[int]map[string]internal.KeyData
+		preambleReadWriter preamble.ReadWriter
+		wantState          map[int]map[string]internal.KeyData
 	}{
 		{
 			name:      "1. Preamble store with no preamble read writer passed should trigger one to be created upon initialization",
 			directory: directory,
-			state: map[string]internal.KeyData{
-				"key1": {
-					Value:    "value1",
-					ExpireAt: clock.NewClock().Now().Add(10 * time.Second),
+			state: map[int]map[string]internal.KeyData{
+				0: {
+					"key1": {Value: "value-01", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key2": {Value: "value-02", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key3": {Value: "value-03", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
 				},
-				"key2": {
-					Value:    "value2",
-					ExpireAt: clock.NewClock().Now().Add(10 * time.Second),
-				},
-				"key3": {
-					Value:    "value3",
-					ExpireAt: clock.NewClock().Now().Add(10 * time.Second),
+				1: {
+					"key1": {Value: "value-11", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key2": {Value: "value-12", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key3": {Value: "value-13", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
 				},
 			},
 			preambleReadWriter: nil,
-			wantState: map[string]internal.KeyData{
-				"key1": {
-					Value:    "value1",
-					ExpireAt: clock.NewClock().Now().Add(10 * time.Second),
+			wantState: map[int]map[string]internal.KeyData{
+				0: {
+					"key1": {Value: "value-01", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key2": {Value: "value-02", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key3": {Value: "value-03", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
 				},
-				"key2": {
-					Value:    "value2",
-					ExpireAt: clock.NewClock().Now().Add(10 * time.Second),
-				},
-				"key3": {
-					Value:    "value3",
-					ExpireAt: clock.NewClock().Now().Add(10 * time.Second),
+				1: {
+					"key1": {Value: "value-11", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key2": {Value: "value-12", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key3": {Value: "value-13", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
 				},
 			},
 		},
 		{
 			name:      "2. Pass a pre-existing preamble read writer to constructor",
 			directory: directory,
-			state: map[string]internal.KeyData{
-				"key4": {
-					Value:    "value4",
-					ExpireAt: clock.NewClock().Now().Add(10 * time.Second),
+			state: map[int]map[string]internal.KeyData{
+				0: {
+					"key4": {Value: "value-04", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key5": {Value: "value-05", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key6": {Value: "value-06", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
 				},
-				"key5": {
-					Value:    "value5",
-					ExpireAt: clock.NewClock().Now().Add(10 * time.Second),
-				},
-				"key6": {
-					Value:    "value6",
-					ExpireAt: clock.NewClock().Now().Add(10 * time.Second),
+				1: {
+					"key4": {Value: "value-14", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key5": {Value: "value-15", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key6": {Value: "value-16", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
 				},
 			},
-			preambleReadWriter: func() preamble.PreambleReadWriter {
+			preambleReadWriter: func() preamble.ReadWriter {
 				if err := os.MkdirAll(path.Join("./testdata/preamble", "aof"), os.ModePerm); err != nil {
 					t.Error(err)
 				}
@@ -94,65 +88,59 @@ func Test_PreambleStore(t *testing.T) {
 				}
 				return f
 			}(),
-			wantState: map[string]internal.KeyData{
-				"key4": {
-					Value:    "value4",
-					ExpireAt: clock.NewClock().Now().Add(10 * time.Second),
+			wantState: map[int]map[string]internal.KeyData{
+				0: {
+					"key4": {Value: "value-04", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key5": {Value: "value-05", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key6": {Value: "value-06", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
 				},
-				"key5": {
-					Value:    "value5",
-					ExpireAt: clock.NewClock().Now().Add(10 * time.Second),
-				},
-				"key6": {
-					Value:    "value6",
-					ExpireAt: clock.NewClock().Now().Add(10 * time.Second),
+				1: {
+					"key4": {Value: "value-14", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key5": {Value: "value-15", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key6": {Value: "value-16", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
 				},
 			},
 		},
 		{
 			name:      "3. Skip expired keys when saving/loading state from preamble read writer",
 			directory: directory,
-			state: map[string]internal.KeyData{
-				"key7": {
-					Value:    "value7",
-					ExpireAt: clock.NewClock().Now().Add(10 * time.Second),
+			state: map[int]map[string]internal.KeyData{
+				0: {
+					"key7":  {Value: "value-07", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key8":  {Value: "value-08", ExpireAt: clock.NewClock().Now().Add(-10 * time.Second)},
+					"key9":  {Value: "value-09", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key10": {Value: "value-010", ExpireAt: clock.NewClock().Now().Add(-10 * time.Second)},
 				},
-				"key8": {
-					Value:    "value8",
-					ExpireAt: clock.NewClock().Now().Add(-10 * time.Second),
-				},
-				"key9": {
-					Value:    "value9",
-					ExpireAt: clock.NewClock().Now().Add(10 * time.Second),
-				},
-				"key10": {
-					Value:    "value10",
-					ExpireAt: clock.NewClock().Now().Add(-10 * time.Second),
+				1: {
+					"key7":  {Value: "value-17", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key8":  {Value: "value-18", ExpireAt: clock.NewClock().Now().Add(-10 * time.Second)},
+					"key9":  {Value: "value-19", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key10": {Value: "value-110", ExpireAt: clock.NewClock().Now().Add(-10 * time.Second)},
 				},
 			},
 			preambleReadWriter: nil,
-			wantState: map[string]internal.KeyData{
-				"key7": {
-					Value:    "value7",
-					ExpireAt: clock.NewClock().Now().Add(10 * time.Second),
+			wantState: map[int]map[string]internal.KeyData{
+				0: {
+					"key7": {Value: "value-07", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key9": {Value: "value-09", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
 				},
-				"key9": {
-					Value:    "value9",
-					ExpireAt: clock.NewClock().Now().Add(10 * time.Second),
+				1: {
+					"key7": {Value: "value-17", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
+					"key9": {Value: "value-19", ExpireAt: clock.NewClock().Now().Add(10 * time.Second)},
 				},
 			},
 		},
 	}
 
 	for _, test := range tests {
-		options := []func(store *preamble.PreambleStore){
+		options := []func(store *preamble.Store){
 			preamble.WithClock(clock.NewClock()),
 			preamble.WithDirectory(test.directory),
-			preamble.WithGetStateFunc(func() map[string]internal.KeyData {
+			preamble.WithGetStateFunc(func() map[int]map[string]internal.KeyData {
 				return test.state
 			}),
-			preamble.WithSetKeyDataFunc(func(key string, data internal.KeyData) {
-				entry, ok := test.wantState[key]
+			preamble.WithSetKeyDataFunc(func(database int, key string, data internal.KeyData) {
+				entry, ok := test.wantState[database][key]
 				if !ok {
 					t.Errorf("could not find element: %v", key)
 				}

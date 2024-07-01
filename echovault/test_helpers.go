@@ -25,6 +25,7 @@ func createEchoVaultWithConfig(conf config.Config) *EchoVault {
 }
 
 func presetValue(server *EchoVault, ctx context.Context, key string, value interface{}) error {
+	ctx = context.WithValue(ctx, "Database", 0)
 	if err := server.setValues(ctx, map[string]interface{}{key: value}); err != nil {
 		return err
 	}
@@ -32,6 +33,7 @@ func presetValue(server *EchoVault, ctx context.Context, key string, value inter
 }
 
 func presetKeyData(server *EchoVault, ctx context.Context, key string, data internal.KeyData) {
+	ctx = context.WithValue(ctx, "Database", 0)
 	_ = server.setValues(ctx, map[string]interface{}{key: data.Value})
 	server.setExpiry(ctx, key, data.ExpireAt, false)
 }

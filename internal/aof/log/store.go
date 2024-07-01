@@ -16,71 +16,81 @@ package log
 
 import (
 	"fmt"
+	"github.com/echovault/echovault/internal"
 	"github.com/echovault/echovault/internal/clock"
 	"github.com/tidwall/resp"
 	"io"
 	"log"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
-type AppendReadWriter interface {
+type ReadWriter interface {
 	io.ReadWriteSeeker
 	io.Closer
 	Truncate(size int64) error
 	Sync() error
 }
 
-type AppendStore struct {
-	clock         clock.Clock
-	strategy      string               // Append file sync strategy. Can only be "always", "everysec", or "no"
-	mut           sync.Mutex           // Store mutex
-	rw            AppendReadWriter     // The ReadWriter used to persist and load the log
-	directory     string               // The directory for the AOF file if we must create one
-	handleCommand func(command []byte) // Function to handle command read from AOF log after restore
+type Store struct {
+	clock clock.Clock
+	// Keeps track of the current database that we're logging commands for.
+	currentDatabase int
+	// Append file sync strategy. Can only be "always", "everysec", or "no".
+	strategy string
+	// Store mutex.
+	mut sync.Mutex
+	// The ReadWriter used to persist and load the log.
+	rw ReadWriter
+	// The directory for the AOF file if we must create one.
+	directory string
+	// Function to handle command read from AOF log after restore.
+	handleCommand func(database int, command []byte)
 }
 
-func WithClock(clock clock.Clock) func(store *AppendStore) {
-	return func(store *AppendStore) {
+func WithClock(clock clock.Clock) func(store *Store) {
+	return func(store *Store) {
 		store.clock = clock
 	}
 }
 
-func WithStrategy(strategy string) func(store *AppendStore) {
-	return func(store *AppendStore) {
+func WithStrategy(strategy string) func(store *Store) {
+	return func(store *Store) {
 		store.strategy = strings.ToLower(strategy)
 	}
 }
 
-func WithReadWriter(rw AppendReadWriter) func(store *AppendStore) {
-	return func(store *AppendStore) {
+func WithReadWriter(rw ReadWriter) func(store *Store) {
+	return func(store *Store) {
 		store.rw = rw
 	}
 }
 
-func WithDirectory(directory string) func(store *AppendStore) {
-	return func(store *AppendStore) {
+func WithDirectory(directory string) func(store *Store) {
+	return func(store *Store) {
 		store.directory = directory
 	}
 }
 
-func WithHandleCommandFunc(f func(command []byte)) func(store *AppendStore) {
-	return func(store *AppendStore) {
+func WithHandleCommandFunc(f func(database int, command []byte)) func(store *Store) {
+	return func(store *Store) {
 		store.handleCommand = f
 	}
 }
 
-func NewAppendStore(options ...func(store *AppendStore)) (*AppendStore, error) {
-	store := &AppendStore{
-		clock:         clock.NewClock(),
-		directory:     "",
-		strategy:      "everysec",
-		rw:            nil,
-		mut:           sync.Mutex{},
-		handleCommand: func(command []byte) {},
+func NewAppendStore(options ...func(store *Store)) (*Store, error) {
+	store := &Store{
+		clock:           clock.NewClock(),
+		currentDatabase: -1,
+		directory:       "",
+		strategy:        "everysec",
+		rw:              nil,
+		mut:             sync.Mutex{},
+		handleCommand:   func(database int, command []byte) {},
 	}
 
 	for _, option := range options {
@@ -125,8 +135,8 @@ func NewAppendStore(options ...func(store *AppendStore)) (*AppendStore, error) {
 	return store, nil
 }
 
-func (store *AppendStore) Write(command []byte) error {
-	// Skip operation if ReadWriter is not defined
+func (store *Store) Write(database int, command []byte) error {
+	// Skip operation if ReadWriter is not defined.
 	if store.rw == nil {
 		return nil
 	}
@@ -134,27 +144,38 @@ func (store *AppendStore) Write(command []byte) error {
 	store.mut.Lock()
 	defer store.mut.Unlock()
 
+	// If the database parameter is different from the current database index,
+	// log the SELECT command before logging the incoming command.
+	// This allows us to switch databases appropriately when restoring the state on startup.
+	if database != store.currentDatabase {
+		_, err := store.rw.Write([]byte(fmt.Sprintf("*2\r\n$6\r\nSELECT\r\n$1\r\n%s\r\n", strconv.Itoa(database))))
+		if err != nil {
+			return fmt.Errorf("log select error: %+v", err)
+		}
+		store.currentDatabase = database
+	}
+
 	if _, err := store.rw.Write(command); err != nil {
-		return err
+		return fmt.Errorf("log command error: %+v", err)
 	}
 
 	if strings.EqualFold(store.strategy, "always") {
 		if err := store.Sync(); err != nil {
-			return err
+			return fmt.Errorf("log file sync error: %+v", err)
 		}
 	}
 
 	return nil
 }
 
-func (store *AppendStore) Sync() error {
+func (store *Store) Sync() error {
 	if store.rw != nil {
 		return store.rw.Sync()
 	}
 	return nil
 }
 
-func (store *AppendStore) Restore() error {
+func (store *Store) Restore() error {
 	store.mut.Lock()
 	defer store.mut.Unlock()
 
@@ -164,39 +185,72 @@ func (store *AppendStore) Restore() error {
 	}
 
 	r := resp.NewReader(store.rw)
+	database := 0
+
 	for {
 		value, n, err := r.ReadValue()
 		if err != nil && err != io.EOF {
 			return err
 		}
 		if n == 0 {
-			// Break out when there are no more bytes to read
+			// Break out when there are no more bytes to read.
 			break
 		}
+
 		command, err := value.MarshalRESP()
 		if err != nil {
 			return err
 		}
-		store.handleCommand(command)
+
+		// Decode command.
+		cmd, err := internal.Decode(command)
+		if err != nil {
+			return err
+		}
+		// If the command is a SELECT command, set the database value.
+		if strings.EqualFold(cmd[0], "select") {
+			database, err = strconv.Atoi(cmd[1])
+			if err != nil {
+				return err
+			}
+			// Restart the read loop.
+			continue
+		}
+
+		store.handleCommand(database, command)
 	}
 
 	return nil
 }
 
-func (store *AppendStore) Truncate() error {
+func (store *Store) Truncate() error {
 	store.mut.Lock()
 	defer store.mut.Unlock()
+
 	if err := store.rw.Truncate(0); err != nil {
-		return err
+		return fmt.Errorf("truncate: truncate error: %+v", err)
 	}
-	// Seek to the beginning of the file after truncating
+
+	// Seek to the beginning of the file after truncating.
 	if _, err := store.rw.Seek(0, 0); err != nil {
-		return err
+		return fmt.Errorf("truncate: seek error: %+v", err)
 	}
+
+	// Add command to select the current database at the top of the file.
+	_, err := store.rw.Write([]byte(
+		fmt.Sprintf("*2\r\n$6\r\nSELECT\r\n$1\r\n%s\r\n", strconv.Itoa(store.currentDatabase))))
+	if err != nil {
+		return fmt.Errorf("truncate: log select error: %+v", err)
+	}
+	// Immediately sync the file.
+	if err = store.rw.Sync(); err != nil {
+		return fmt.Errorf("truncate: sync error: %+v", err)
+	}
+
 	return nil
 }
 
-func (store *AppendStore) Close() error {
+func (store *Store) Close() error {
 	store.mut.Lock()
 	defer store.mut.Unlock()
 	return store.rw.Close()

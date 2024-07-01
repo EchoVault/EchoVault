@@ -883,7 +883,7 @@ func Test_Standalone(t *testing.T) {
 		tests := []struct {
 			name         string
 			dataDir      string
-			values       map[string]string
+			values       map[int]map[string]string
 			snapshotFunc func(mockServer *EchoVault) error
 			lastSaveFunc func(mockServer *EchoVault) (int, error)
 			wantLastSave int
@@ -891,11 +891,9 @@ func Test_Standalone(t *testing.T) {
 			{
 				name:    "1. Snapshot in embedded instance",
 				dataDir: path.Join(dataDir, "embedded_instance"),
-				values: map[string]string{
-					"key5": "value5",
-					"key6": "value6",
-					"key7": "value7",
-					"key8": "value8",
+				values: map[int]map[string]string{
+					0: {"key5": "value-05", "key6": "value-06", "key7": "value-07", "key8": "value-08"},
+					1: {"key5": "value-15", "key6": "value-16", "key7": "value-17", "key8": "value-18"},
 				},
 				snapshotFunc: func(mockServer *EchoVault) error {
 					if _, err := mockServer.Save(); err != nil {
@@ -937,10 +935,13 @@ func Test_Standalone(t *testing.T) {
 				}()
 
 				// Trigger some write commands
-				for key, value := range test.values {
-					if _, _, err = mockServer.Set(key, value, SetOptions{}); err != nil {
-						t.Error(err)
-						return
+				for database, data := range test.values {
+					_ = mockServer.SelectDB(database)
+					for key, value := range data {
+						if _, _, err = mockServer.Set(key, value, SetOptions{}); err != nil {
+							t.Error(err)
+							return
+						}
 					}
 				}
 
@@ -962,15 +963,18 @@ func Test_Standalone(t *testing.T) {
 				}
 
 				// Check that all the key/value pairs have been restored into the store.
-				for key, value := range test.values {
-					res, err := mockServer.Get(key)
-					if err != nil {
-						t.Error(err)
-						return
-					}
-					if res != value {
-						t.Errorf("expected value at key \"%s\" to be \"%s\", got \"%s\"", key, value, res)
-						return
+				for database, data := range test.values {
+					_ = mockServer.SelectDB(database)
+					for key, value := range data {
+						res, err := mockServer.Get(key)
+						if err != nil {
+							t.Error(err)
+							return
+						}
+						if res != value {
+							t.Errorf("expected value at key \"%s\" to be \"%s\", got \"%s\"", key, value, res)
+							return
+						}
 					}
 				}
 

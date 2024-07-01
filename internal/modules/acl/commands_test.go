@@ -51,6 +51,14 @@ func setUpServer(port int, requirePass bool, aclConfig string) (*echovault.EchoV
 
 	// Add the initial test users to the ACL module.
 	for _, user := range generateInitialTestUsers() {
+		// If the user already exists in the server, skip.
+		existingUsers, err := mockServer.ACLUsers()
+		if err != nil {
+			return nil, err
+		}
+		if slices.Contains(existingUsers, user.Username) {
+			continue
+		}
 		if _, err := mockServer.ACLSetUser(user); err != nil {
 			return nil, err
 		}
@@ -157,6 +165,8 @@ func generateSHA256Password(plain string) string {
 }
 
 func Test_ACL(t *testing.T) {
+	t.Parallel()
+
 	port, err := internal.GetFreePort()
 	if err != nil {
 		t.Error(err)
@@ -174,135 +184,6 @@ func Test_ACL(t *testing.T) {
 
 	t.Cleanup(func() {
 		mockServer.ShutDown()
-	})
-
-	t.Run("Test_HandleAuth", func(t *testing.T) {
-		t.Parallel()
-
-		conn, err := internal.GetConnection("localhost", port)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		defer func() {
-			if conn != nil {
-				_ = conn.Close()
-			}
-		}()
-
-		r := resp.NewConn(conn)
-
-		tests := []struct {
-			name    string
-			cmd     []resp.Value
-			wantRes string
-			wantErr string
-		}{
-			{
-				name:    "1. Authenticate with default user without specifying username",
-				cmd:     []resp.Value{resp.StringValue("AUTH"), resp.StringValue("password1")},
-				wantRes: "OK",
-				wantErr: "",
-			},
-			{
-				name: "2. Authenticate with plaintext password",
-				cmd: []resp.Value{
-					resp.StringValue("AUTH"),
-					resp.StringValue("with_password_user"),
-					resp.StringValue("password2"),
-				},
-				wantRes: "OK",
-				wantErr: "",
-			},
-			{
-				name: "3. Authenticate with SHA256 password",
-				cmd: []resp.Value{
-					resp.StringValue("AUTH"),
-					resp.StringValue("with_password_user"),
-					resp.StringValue("password3"),
-				},
-				wantRes: "OK",
-				wantErr: "",
-			},
-			{
-				name: "4. Authenticate with no password user",
-				cmd: []resp.Value{
-					resp.StringValue("AUTH"),
-					resp.StringValue("no_password_user"),
-					resp.StringValue("password4"),
-				},
-				wantRes: "OK",
-				wantErr: "",
-			},
-			{
-				name: "5. Fail to authenticate with disabled user",
-				cmd: []resp.Value{
-					resp.StringValue("AUTH"),
-					resp.StringValue("disabled_user"),
-					resp.StringValue("password5"),
-				},
-				wantRes: "",
-				wantErr: "Error user disabled_user is disabled",
-			},
-			{
-				name: "6. Fail to authenticate with non-existent user",
-				cmd: []resp.Value{
-					resp.StringValue("AUTH"),
-					resp.StringValue("non_existent_user"),
-					resp.StringValue("password6"),
-				},
-				wantRes: "",
-				wantErr: "Error no user with username non_existent_user",
-			},
-			{
-				name: "7. Fail to authenticate with the wrong password",
-				cmd: []resp.Value{
-					resp.StringValue("AUTH"),
-					resp.StringValue("with_password_user"),
-					resp.StringValue("wrong_password"),
-				},
-				wantRes: "",
-				wantErr: "Error could not authenticate user",
-			},
-			{
-				name:    "8. Command too short",
-				cmd:     []resp.Value{resp.StringValue("AUTH")},
-				wantRes: "",
-				wantErr: fmt.Sprintf("Error %s", constants.WrongArgsResponse),
-			},
-			{
-				name: "9. Command too long",
-				cmd: []resp.Value{
-					resp.StringValue("AUTH"),
-					resp.StringValue("user"),
-					resp.StringValue("password1"),
-					resp.StringValue("password2"),
-				},
-				wantRes: "",
-				wantErr: fmt.Sprintf("Error %s", constants.WrongArgsResponse),
-			},
-		}
-
-		for _, test := range tests {
-			t.Run(test.name, func(t *testing.T) {
-				if err = r.WriteArray(test.cmd); err != nil {
-					t.Error(err)
-				}
-				rv, _, err := r.ReadValue()
-				if err != nil {
-					t.Error(err)
-				}
-				if test.wantErr != "" {
-					if rv.Error().Error() != test.wantErr {
-						t.Errorf("expected error response \"%s\", got \"%s\"", test.wantErr, rv.Error().Error())
-					}
-					return
-				}
-				if rv.String() != test.wantRes {
-					t.Errorf("expected response \"%s\", got \"%s\"", test.wantRes, rv.String())
-				}
-			})
-		}
 	})
 
 	t.Run("Test_Permissions", func(t *testing.T) {
@@ -501,7 +382,7 @@ func Test_ACL(t *testing.T) {
 					resp.StringValue("0"),
 					resp.StringValue("-1"),
 				},
-				wantErr: fmt.Sprintf("not authorised to access the following keys: [%s~%s]", "%R", "key3"),
+				wantErr: fmt.Sprintf("not authorised to access the following read keys: [%s~%s]", "%R", "key3"),
 			},
 			{
 				name: "10. Return error when trying to write to keys that are not in write keys list",
@@ -516,7 +397,7 @@ func Test_ACL(t *testing.T) {
 					resp.StringValue("0"),
 					resp.StringValue("3"),
 				},
-				wantErr: fmt.Sprintf("not authorised to access the following keys: [%s~%s]", "%W", "key3"),
+				wantErr: fmt.Sprintf("not authorised to access the following write keys: [%s~%s]", "%W", "key3"),
 			},
 		}
 
@@ -1983,8 +1864,13 @@ func Test_ACL(t *testing.T) {
 				// Check if ACL LIST returns the expected list of users.
 				resArr := res.Array()
 				if len(resArr) != len(test.want) {
-					t.Errorf("expected response of lenght %d, got lenght %d", len(test.want), len(resArr))
+					t.Errorf("expected response of lenght %d, got length %d", len(test.want), len(resArr))
 					return
+				}
+
+				fmt.Println("USER LIST: ")
+				for j, user := range resArr {
+					fmt.Printf("%d) %+v\n", j, user)
 				}
 
 				var resStr []string

@@ -57,15 +57,66 @@ func (server *EchoVault) getHandlerFuncParams(ctx context.Context, cmd []string,
 		GetACL:                server.getACL,
 		GetAllCommands:        server.getCommands,
 		GetClock:              server.getClock,
-		DeleteKey: func(key string) error {
+		Flush:                 server.Flush,
+		SwapDBs:               server.SwapDBs,
+		GetServerInfo:         server.GetServerInfo,
+		DeleteKey: func(ctx context.Context, key string) error {
 			server.storeLock.Lock()
 			defer server.storeLock.Unlock()
-			return server.deleteKey(key)
+			return server.deleteKey(ctx, key)
+		},
+		GetConnectionInfo: func(conn *net.Conn) internal.ConnectionInfo {
+			server.connInfo.mut.RLock()
+			defer server.connInfo.mut.RUnlock()
+			return server.connInfo.tcpClients[conn]
+		},
+		SetConnectionInfo: func(conn *net.Conn, clientname string, protocol int, database int) {
+			server.connInfo.mut.Lock()
+			defer server.connInfo.mut.Unlock()
+
+			info := server.connInfo.tcpClients[conn]
+
+			// Set protocol.
+			info.Protocol = protocol
+
+			// Set connection name.
+			if clientname != "" {
+				info.Name = clientname
+			}
+
+			// If the database index does not exist, create the new database.
+			server.storeLock.Lock()
+			if server.store[database] == nil {
+				server.createDatabase(database)
+			}
+			server.storeLock.Unlock()
+
+			// Set database index for the current connection.
+			info.Database = database
+
+			server.connInfo.tcpClients[conn] = info
 		},
 	}
 }
 
 func (server *EchoVault) handleCommand(ctx context.Context, message []byte, conn *net.Conn, replay bool, embedded bool) ([]byte, error) {
+	// Prepare context before processing the command.
+	server.connInfo.mut.RLock()
+	if embedded && !replay {
+		// The call is triggered via the embedded API.
+		// Add embedded connection info to the context of the request.
+		ctx = context.WithValue(ctx, "ConnectionName", server.connInfo.embedded.Name)
+		ctx = context.WithValue(ctx, "Protocol", server.connInfo.embedded.Protocol)
+		ctx = context.WithValue(ctx, "Database", server.connInfo.embedded.Database)
+	} else {
+		// The call is triggered by a TCP connection.
+		// Add TCP connection info to the context of the request.
+		ctx = context.WithValue(ctx, "ConnectionName", server.connInfo.tcpClients[conn].Name)
+		ctx = context.WithValue(ctx, "Protocol", server.connInfo.tcpClients[conn].Protocol)
+		ctx = context.WithValue(ctx, "Database", server.connInfo.tcpClients[conn].Database)
+	}
+	server.connInfo.mut.RUnlock()
+
 	cmd, err := internal.Decode(message)
 	if err != nil {
 		return nil, err
@@ -123,7 +174,9 @@ func (server *EchoVault) handleCommand(ctx context.Context, message []byte, conn
 		}
 
 		if internal.IsWriteCommand(command, subCommand) && !replay {
-			go server.aofEngine.QueueCommand(message)
+			server.connInfo.mut.RLock()
+			server.aofEngine.LogCommand(server.connInfo.tcpClients[conn].Database, message)
+			server.connInfo.mut.RUnlock()
 		}
 
 		server.stateMutationInProgress.Store(false)

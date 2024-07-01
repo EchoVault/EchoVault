@@ -31,7 +31,7 @@ func handleLLen(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 
 	if !keyExists {
 		// If key does not exist, return 0
@@ -52,7 +52,7 @@ func handleLIndex(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 	index, ok := internal.AdaptType(params.Command[2]).(int)
 
 	if !ok {
@@ -82,7 +82,7 @@ func handleLRange(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 	start, startOk := internal.AdaptType(params.Command[2]).(int)
 	end, endOk := internal.AdaptType(params.Command[3]).(int)
 
@@ -157,7 +157,7 @@ func handleLSet(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 
 	index, ok := internal.AdaptType(params.Command[2]).(int)
 	if !ok {
@@ -192,7 +192,7 @@ func handleLTrim(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 	start, startOk := internal.AdaptType(params.Command[2]).(int)
 	end, endOk := internal.AdaptType(params.Command[3]).(int)
 
@@ -237,7 +237,7 @@ func handleLRem(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 	value := params.Command[3]
 
 	count, ok := internal.AdaptType(params.Command[2]).(int)
@@ -300,7 +300,7 @@ func handleLMove(params internal.HandlerFuncParams) ([]byte, error) {
 		return nil, err
 	}
 
-	keysExist := params.KeysExist(keys.WriteKeys)
+	keysExist := params.KeysExist(params.Context, keys.WriteKeys)
 	source, destination := keys.WriteKeys[0], keys.WriteKeys[1]
 	whereFrom := strings.ToLower(params.Command[3])
 	whereTo := strings.ToLower(params.Command[4])
@@ -366,7 +366,7 @@ func handleLPush(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 
 	if !keyExists {
 		switch strings.ToLower(params.Command[0]) {
@@ -399,7 +399,7 @@ func handleRPush(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 
 	var newElems []interface{}
 
@@ -437,7 +437,7 @@ func handlePop(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 
 	if !keyExists {
 		return nil, fmt.Errorf("%s command on non-list item", strings.ToUpper(params.Command[0]))

@@ -23,66 +23,65 @@ import (
 	"os"
 	"path"
 	"sync"
-	"time"
 )
 
-type PreambleReadWriter interface {
+type ReadWriter interface {
 	io.ReadWriteSeeker
 	io.Closer
 	Truncate(size int64) error
 	Sync() error
 }
 
-type PreambleStore struct {
+type Store struct {
 	clock          clock.Clock
-	rw             PreambleReadWriter
+	rw             ReadWriter
 	mut            sync.Mutex
 	directory      string
-	getStateFunc   func() map[string]internal.KeyData
-	setKeyDataFunc func(key string, data internal.KeyData)
+	getStateFunc   func() map[int]map[string]internal.KeyData
+	setKeyDataFunc func(database int, key string, data internal.KeyData)
 }
 
-func WithClock(clock clock.Clock) func(store *PreambleStore) {
-	return func(store *PreambleStore) {
+func WithClock(clock clock.Clock) func(store *Store) {
+	return func(store *Store) {
 		store.clock = clock
 	}
 }
 
-func WithReadWriter(rw PreambleReadWriter) func(store *PreambleStore) {
-	return func(store *PreambleStore) {
+func WithReadWriter(rw ReadWriter) func(store *Store) {
+	return func(store *Store) {
 		store.rw = rw
 	}
 }
 
-func WithGetStateFunc(f func() map[string]internal.KeyData) func(store *PreambleStore) {
-	return func(store *PreambleStore) {
+func WithGetStateFunc(f func() map[int]map[string]internal.KeyData) func(store *Store) {
+	return func(store *Store) {
 		store.getStateFunc = f
 	}
 }
 
-func WithSetKeyDataFunc(f func(key string, data internal.KeyData)) func(store *PreambleStore) {
-	return func(store *PreambleStore) {
+func WithSetKeyDataFunc(f func(database int, key string, data internal.KeyData)) func(store *Store) {
+	return func(store *Store) {
 		store.setKeyDataFunc = f
 	}
 }
 
-func WithDirectory(directory string) func(store *PreambleStore) {
-	return func(store *PreambleStore) {
+func WithDirectory(directory string) func(store *Store) {
+	return func(store *Store) {
 		store.directory = directory
 	}
 }
 
-func NewPreambleStore(options ...func(store *PreambleStore)) (*PreambleStore, error) {
-	store := &PreambleStore{
+func NewPreambleStore(options ...func(store *Store)) (*Store, error) {
+	store := &Store{
 		clock:     clock.NewClock(),
 		rw:        nil,
 		mut:       sync.Mutex{},
 		directory: "",
-		getStateFunc: func() map[string]internal.KeyData {
+		getStateFunc: func() map[int]map[string]internal.KeyData {
 			// No-Op by default
 			return nil
 		},
-		setKeyDataFunc: func(key string, data internal.KeyData) {},
+		setKeyDataFunc: func(database int, key string, data internal.KeyData) {},
 	}
 
 	for _, option := range options {
@@ -105,12 +104,12 @@ func NewPreambleStore(options ...func(store *PreambleStore)) (*PreambleStore, er
 	return store, nil
 }
 
-func (store *PreambleStore) CreatePreamble() error {
+func (store *Store) CreatePreamble() error {
 	store.mut.Lock()
 	store.mut.Unlock()
 
 	// Get current state.
-	state := store.filterExpiredKeys(store.getStateFunc())
+	state := internal.FilterExpiredKeys(store.clock.Now(), store.getStateFunc())
 	o, err := json.Marshal(state)
 	if err != nil {
 		return err
@@ -137,12 +136,12 @@ func (store *PreambleStore) CreatePreamble() error {
 	return nil
 }
 
-func (store *PreambleStore) Restore() error {
+func (store *Store) Restore() error {
 	if store.rw == nil {
 		return nil
 	}
 
-	// Seek to the beginning of the file before beginning restore
+	// Seek to the beginning of the file before beginning restore.
 	if _, err := store.rw.Seek(0, 0); err != nil {
 		return fmt.Errorf("restore preamble: %v", err)
 	}
@@ -156,38 +155,22 @@ func (store *PreambleStore) Restore() error {
 		return nil
 	}
 
-	state := make(map[string]internal.KeyData)
-
+	state := make(map[int]map[string]internal.KeyData)
 	if err = json.Unmarshal(b, &state); err != nil {
 		return err
 	}
 
-	for key, data := range store.filterExpiredKeys(state) {
-		store.setKeyDataFunc(key, data)
+	for database, data := range internal.FilterExpiredKeys(store.clock.Now(), state) {
+		for key, keyData := range data {
+			store.setKeyDataFunc(database, key, keyData)
+		}
 	}
 
 	return nil
 }
 
-func (store *PreambleStore) Close() error {
+func (store *Store) Close() error {
 	store.mut.Lock()
 	defer store.mut.Unlock()
 	return store.rw.Close()
-}
-
-// filterExpiredKeys filters out keys that are already expired, so they are not persisted.
-func (store *PreambleStore) filterExpiredKeys(state map[string]internal.KeyData) map[string]internal.KeyData {
-	var keysToDelete []string
-	for k, v := range state {
-		if v.ExpireAt.Equal(time.Time{}) {
-			continue
-		}
-		if v.ExpireAt.Before(store.clock.Now()) {
-			keysToDelete = append(keysToDelete, k)
-		}
-	}
-	for _, key := range keysToDelete {
-		delete(state, key)
-	}
-	return state
 }

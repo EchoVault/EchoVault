@@ -40,7 +40,7 @@ func Test_CacheLRU(t *testing.T) {
 	ticker.Stop()
 
 	for i := len(access) - 1; i >= 0; i-- {
-		key := heap.Pop(&cache).(string)
+		key := heap.Pop(cache).(string)
 		if key != access[i] {
 			t.Errorf("expected key at index %d to be %s, got %s", i, access[i], key)
 		}

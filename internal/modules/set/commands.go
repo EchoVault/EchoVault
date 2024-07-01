@@ -30,7 +30,7 @@ func handleSADD(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 
 	var set *Set
 
@@ -59,7 +59,7 @@ func handleSCARD(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 
 	if !keyExists {
 		return []byte(fmt.Sprintf(":0\r\n")), nil
@@ -81,7 +81,7 @@ func handleSDIFF(params internal.HandlerFuncParams) ([]byte, error) {
 		return nil, err
 	}
 
-	keyExists := params.KeysExist(keys.ReadKeys)
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)
 
 	// Extract base set first
 	if !keyExists[keys.ReadKeys[0]] {
@@ -123,7 +123,7 @@ func handleSDIFFSTORE(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	destination := keys.WriteKeys[0]
-	keyExists := params.KeysExist(append(keys.WriteKeys, keys.ReadKeys...))
+	keyExists := params.KeysExist(params.Context, append(keys.WriteKeys, keys.ReadKeys...))
 
 	// Extract base set first
 	if !keyExists[keys.ReadKeys[0]] {
@@ -162,7 +162,7 @@ func handleSINTER(params internal.HandlerFuncParams) ([]byte, error) {
 		return nil, err
 	}
 
-	keyExists := params.KeysExist(keys.ReadKeys)
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)
 
 	var sets []*Set
 
@@ -202,7 +202,7 @@ func handleSINTERCARD(params internal.HandlerFuncParams) ([]byte, error) {
 		return nil, err
 	}
 
-	keyExists := params.KeysExist(keys.ReadKeys)
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)
 
 	// Extract the limit from the command
 	var limit int
@@ -254,7 +254,7 @@ func handleSINTERSTORE(params internal.HandlerFuncParams) ([]byte, error) {
 		return nil, err
 	}
 
-	keyExists := params.KeysExist(keys.ReadKeys)
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)
 
 	var sets []*Set
 
@@ -287,7 +287,7 @@ func handleSISMEMBER(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 
 	if !keyExists {
 		return []byte(":0\r\n"), nil
@@ -312,7 +312,7 @@ func handleSMEMBERS(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 
 	if !keyExists {
 		return []byte("*0\r\n"), nil
@@ -343,7 +343,7 @@ func handleSMISMEMBER(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 	members := params.Command[2:]
 
 	if !keyExists {
@@ -382,7 +382,7 @@ func handleSMOVE(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	source, destination := keys.WriteKeys[0], keys.WriteKeys[1]
-	keyExists := params.KeysExist(keys.WriteKeys)
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)
 	member := params.Command[3]
 
 	if !keyExists[source] {
@@ -413,7 +413,7 @@ func handleSPOP(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 	count := 1
 
 	if len(params.Command) == 3 {
@@ -453,7 +453,7 @@ func handleSRANDMEMBER(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 	count := 1
 
 	if len(params.Command) == 3 {
@@ -493,7 +493,7 @@ func handleSREM(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 	members := params.Command[2:]
 
 	if !keyExists {

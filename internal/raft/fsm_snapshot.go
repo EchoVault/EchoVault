@@ -26,7 +26,7 @@ import (
 
 type SnapshotOpts struct {
 	config                config.Config
-	data                  map[string]internal.KeyData
+	data                  map[int]map[string]internal.KeyData
 	startSnapshot         func()
 	finishSnapshot        func()
 	setLatestSnapshotTime func(msec int64)

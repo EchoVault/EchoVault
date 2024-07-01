@@ -102,7 +102,7 @@ func (server *EchoVault) LoadModule(path string, args ...string) error {
 	handlerFunc, ok := handlerFuncSymbol.(func(
 		ctx context.Context,
 		command []string,
-		keysExist func(key []string) map[string]bool,
+		keysExist func(ctx context.Context, key []string) map[string]bool,
 		getValues func(ctx context.Context, key []string) map[string]interface{},
 		setValues func(ctx context.Context, entries map[string]interface{}) error,
 		args ...string,

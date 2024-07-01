@@ -33,7 +33,7 @@ func handleZADD(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 
 	var updatePolicy interface{} = nil
 	var comparison interface{} = nil
@@ -175,7 +175,7 @@ func handleZCARD(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 
 	if !keyExists {
 		return []byte(":0\r\n"), nil
@@ -196,7 +196,7 @@ func handleZCOUNT(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 
 	minimum := Score(math.Inf(-1))
 	switch internal.AdaptType(params.Command[2]).(type) {
@@ -260,7 +260,7 @@ func handleZLEXCOUNT(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 	minimum := params.Command[2]
 	maximum := params.Command[3]
 
@@ -300,7 +300,7 @@ func handleZDIFF(params internal.HandlerFuncParams) ([]byte, error) {
 		return nil, err
 	}
 
-	keyExists := params.KeysExist(keys.ReadKeys)
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)
 
 	withscoresIndex := slices.IndexFunc(params.Command, func(s string) bool {
 		return strings.EqualFold(s, "withscores")
@@ -359,7 +359,7 @@ func handleZDIFFSTORE(params internal.HandlerFuncParams) ([]byte, error) {
 		return nil, err
 	}
 
-	keyExists := params.KeysExist(keys.ReadKeys)
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)
 	destination := keys.WriteKeys[0]
 
 	// Extract base set
@@ -400,7 +400,7 @@ func handleZINCRBY(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 
 	member := Value(params.Command[3])
 	var increment Score
@@ -465,7 +465,7 @@ func handleZINTER(params internal.HandlerFuncParams) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	keyExists := params.KeysExist(keys)
+	keyExists := params.KeysExist(params.Context, keys)
 
 	var setParams []SortedSetParam
 
@@ -510,7 +510,7 @@ func handleZINTERSTORE(params internal.HandlerFuncParams) ([]byte, error) {
 		return nil, err
 	}
 
-	keyExists := params.KeysExist(k.ReadKeys)
+	keyExists := params.KeysExist(params.Context, k.ReadKeys)
 	destination := k.WriteKeys[0]
 
 	// Remove the destination keys from the command before parsing it
@@ -556,7 +556,7 @@ func handleZMPOP(params internal.HandlerFuncParams) ([]byte, error) {
 		return nil, err
 	}
 
-	keyExists := params.KeysExist(keys.WriteKeys)
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)
 
 	count := 1
 	policy := "min"
@@ -631,7 +631,7 @@ func handleZPOP(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 	count := 1
 	policy := "min"
 
@@ -681,7 +681,7 @@ func handleZMSCORE(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 
 	if !keyExists {
 		return []byte("*0\r\n"), nil
@@ -719,7 +719,7 @@ func handleZRANDMEMBER(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 
 	count := 1
 	if len(params.Command) >= 3 {
@@ -773,7 +773,7 @@ func handleZRANK(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 	member := params.Command[2]
 	withscores := false
 
@@ -819,7 +819,7 @@ func handleZREM(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 
 	if !keyExists {
 		return []byte(":0\r\n"), nil
@@ -847,7 +847,7 @@ func handleZSCORE(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 
 	if !keyExists {
 		return []byte("$-1\r\n"), nil
@@ -874,7 +874,7 @@ func handleZREMRANGEBYSCORE(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 
 	deletedCount := 0
 
@@ -914,7 +914,7 @@ func handleZREMRANGEBYRANK(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 
 	start, err := strconv.Atoi(params.Command[2])
 	if err != nil {
@@ -975,7 +975,7 @@ func handleZREMRANGEBYLEX(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 	minimum := params.Command[2]
 	maximum := params.Command[3]
 
@@ -1018,7 +1018,7 @@ func handleZRANGE(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 
 	policy := "byscore"
 	scoreStart := math.Inf(-1)    // Lower bound if policy is "byscore"
@@ -1156,7 +1156,7 @@ func handleZRANGESTORE(params internal.HandlerFuncParams) ([]byte, error) {
 
 	destination := keys.WriteKeys[0]
 	source := keys.ReadKeys[0]
-	sourceExists := params.KeysExist(keys.ReadKeys)[source]
+	sourceExists := params.KeysExist(params.Context, keys.ReadKeys)[source]
 	policy := "byscore"
 	scoreStart := math.Inf(-1)    // Lower bound if policy is "byscore"
 	scoreStop := math.Inf(1)      // Upper bound if policy is "byfloat"
@@ -1286,7 +1286,7 @@ func handleZUNION(params internal.HandlerFuncParams) ([]byte, error) {
 		return nil, err
 	}
 
-	keyExists := params.KeysExist(keys)
+	keyExists := params.KeysExist(params.Context, keys)
 
 	var setParams []SortedSetParam
 
@@ -1338,7 +1338,7 @@ func handleZUNIONSTORE(params internal.HandlerFuncParams) ([]byte, error) {
 		return nil, err
 	}
 
-	keyExists := params.KeysExist(keys)
+	keyExists := params.KeysExist(params.Context, keys)
 
 	var setParams []SortedSetParam
 

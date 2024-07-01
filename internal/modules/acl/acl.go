@@ -50,18 +50,20 @@ type ACL struct {
 	GlobPatterns map[string]glob.Glob
 }
 
-func loadUsersFromConfigFile(users []*User, filePath string) {
+func loadUsersFromConfigFile(filePath string) []*User {
+	var users []*User
+
 	if filePath != "" {
-		// Create the director if it does not exist.
+		// Create the directory if it does not exist.
 		if err := os.MkdirAll(path.Dir(filePath), os.ModePerm); err != nil {
 			log.Printf("mkdir ACL config: %v\n", err)
-			return
+			return users
 		}
 		// Open the config file. Create it if it does not exist.
 		f, err := os.OpenFile(filePath, os.O_RDONLY|os.O_CREATE, os.ModePerm)
 		if err != nil {
 			log.Printf("open ACL config: %v\n", err)
-			return
+			return users
 		}
 
 		defer func() {
@@ -75,18 +77,19 @@ func loadUsersFromConfigFile(users []*User, filePath string) {
 		if strings.ToLower(ext) == ".json" {
 			if err := json.NewDecoder(f).Decode(&users); err != nil {
 				log.Printf("load ACL config: %v\n", err)
-				return
+				return users
 			}
 		}
 
 		if slices.Contains([]string{".yaml", ".yml"}, strings.ToLower(ext)) {
 			if err := yaml.NewDecoder(f).Decode(&users); err != nil {
 				log.Printf("load ACL config: %v\n", err)
-				return
+				return users
 			}
 		}
-
 	}
+
+	return users
 }
 
 func NewACL(config config.Config) *ACL {
@@ -105,7 +108,7 @@ func NewACL(config config.Config) *ACL {
 	}
 
 	// 2. Read and parse the ACL config file
-	loadUsersFromConfigFile(users, config.AclConfig)
+	users = loadUsersFromConfigFile(config.AclConfig)
 
 	// 3. If default user was not loaded from file, add the created one
 	defaultLoaded := false
@@ -322,8 +325,8 @@ func (acl *ACL) AuthorizeConnection(conn *net.Conn, cmd []string, command intern
 		return nil
 	}
 
-	// Skip PING
-	if strings.EqualFold(comm, "ping") {
+	// Skip certain commands from authorization
+	if slices.Contains([]string{"ping", "echo", "hello"}, strings.ToLower(comm)) {
 		return nil
 	}
 
@@ -418,7 +421,7 @@ func (acl *ACL) AuthorizeConnection(conn *net.Conn, cmd []string, command intern
 		}
 
 		// 8. Check if readKeys are in IncludedReadKeys
-		if !slices.ContainsFunc(readKeys, func(key string) bool {
+		if len(readKeys) > 0 && !slices.ContainsFunc(readKeys, func(key string) bool {
 			return slices.ContainsFunc(connection.User.IncludedReadKeys, func(readKeyGlob string) bool {
 				if acl.GlobPatterns[readKeyGlob].Match(key) {
 					return true
@@ -430,12 +433,12 @@ func (acl *ACL) AuthorizeConnection(conn *net.Conn, cmd []string, command intern
 			})
 		}) {
 			if len(notAllowed) > 0 {
-				return fmt.Errorf("not authorised to access the following keys: %+v", notAllowed)
+				return fmt.Errorf("not authorised to access the following read keys: %+v", notAllowed)
 			}
 		}
 
 		// 9. Check if write keys are in IncludedWriteKeys
-		if !slices.ContainsFunc(writeKeys, func(key string) bool {
+		if len(writeKeys) > 0 && !slices.ContainsFunc(writeKeys, func(key string) bool {
 			return slices.ContainsFunc(connection.User.IncludedWriteKeys, func(writeKeyGlob string) bool {
 				if acl.GlobPatterns[writeKeyGlob].Match(key) {
 					return true
@@ -446,7 +449,7 @@ func (acl *ACL) AuthorizeConnection(conn *net.Conn, cmd []string, command intern
 				return false
 			})
 		}) {
-			return fmt.Errorf("not authorised to access the following keys: %+v", notAllowed)
+			return fmt.Errorf("not authorised to access the following write keys: %+v", notAllowed)
 		}
 	}
 

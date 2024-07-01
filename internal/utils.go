@@ -211,20 +211,22 @@ func IsMaxMemoryExceeded(maxMemory uint64) bool {
 }
 
 // FilterExpiredKeys filters out keys that are already expired, so they are not persisted.
-func FilterExpiredKeys(now time.Time, state map[string]KeyData) map[string]KeyData {
-	var keysToDelete []string
-	for k, v := range state {
-		// Skip keys with no expiry time.
-		if v.ExpireAt == (time.Time{}) {
-			continue
+func FilterExpiredKeys(now time.Time, state map[int]map[string]KeyData) map[int]map[string]KeyData {
+	for database, data := range state {
+		var keysToDelete []string
+		for k, v := range data {
+			// Skip keys with no expiry time.
+			if v.ExpireAt == (time.Time{}) {
+				continue
+			}
+			// If the key is already expired, mark it for deletion.
+			if v.ExpireAt.Before(now) {
+				keysToDelete = append(keysToDelete, k)
+			}
 		}
-		// If the key is already expired, mark it for deletion.
-		if v.ExpireAt.Before(now) {
-			keysToDelete = append(keysToDelete, k)
+		for _, key := range keysToDelete {
+			delete(state[database], key)
 		}
-	}
-	for _, key := range keysToDelete {
-		delete(state, key)
 	}
 	return state
 }

@@ -23,6 +23,7 @@ RUN mkdir -p /opt/echovault/bin
 RUN mkdir -p /etc/ssl/certs/echovault/echovault
 RUN mkdir -p /etc/ssl/certs/echovault/client
 
+COPY --from=build /build/volumes/modules /opt/echovault/bin/modules
 COPY --from=build /build/bin/linux/x86_64/server /opt/echovault/bin
 
 COPY ./openssl/server /etc/ssl/certs/echovault/server

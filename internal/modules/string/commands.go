@@ -28,7 +28,7 @@ func handleSetRange(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.WriteKeys[0]
-	keyExists := params.KeysExist(keys.WriteKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.WriteKeys)[key]
 
 	offset, ok := internal.AdaptType(params.Command[2]).(int)
 	if !ok {
@@ -92,7 +92,7 @@ func handleStrLen(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 
 	if !keyExists {
 		return []byte(":0\r\n"), nil
@@ -114,7 +114,7 @@ func handleSubStr(params internal.HandlerFuncParams) ([]byte, error) {
 	}
 
 	key := keys.ReadKeys[0]
-	keyExists := params.KeysExist(keys.ReadKeys)[key]
+	keyExists := params.KeysExist(params.Context, keys.ReadKeys)[key]
 
 	start, startOk := internal.AdaptType(params.Command[2]).(int)
 	end, endOk := internal.AdaptType(params.Command[3]).(int)

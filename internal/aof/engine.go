@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package aof handles AOF logging in standalone mode only.
+// Logging in replication clusters is handled in the raft layer.
 package aof
 
 import (
@@ -24,27 +26,23 @@ import (
 	"sync"
 )
 
-// This package handles AOF logging in standalone mode only.
-// Logging in replication clusters is handled in the raft layer.
-
 type Engine struct {
 	clock        clock.Clock
 	syncStrategy string
 	directory    string
-	preambleRW   preamble.PreambleReadWriter
-	appendRW     logstore.AppendReadWriter
+	preambleRW   preamble.ReadWriter
+	appendRW     logstore.ReadWriter
 
 	mut           sync.Mutex
-	logChan       chan []byte
 	logCount      uint64
-	preambleStore *preamble.PreambleStore
-	appendStore   *logstore.AppendStore
+	preambleStore *preamble.Store
+	appendStore   *logstore.Store
 
 	startRewriteFunc  func()
 	finishRewriteFunc func()
-	getStateFunc      func() map[string]internal.KeyData
-	setKeyDataFunc    func(key string, data internal.KeyData)
-	handleCommand     func(command []byte)
+	getStateFunc      func() map[int]map[string]internal.KeyData
+	setKeyDataFunc    func(database int, key string, data internal.KeyData)
+	handleCommand     func(database int, command []byte)
 }
 
 func WithClock(clock clock.Clock) func(engine *Engine) {
@@ -77,31 +75,31 @@ func WithFinishRewriteFunc(f func()) func(engine *Engine) {
 	}
 }
 
-func WithGetStateFunc(f func() map[string]internal.KeyData) func(engine *Engine) {
+func WithGetStateFunc(f func() map[int]map[string]internal.KeyData) func(engine *Engine) {
 	return func(engine *Engine) {
 		engine.getStateFunc = f
 	}
 }
 
-func WithSetKeyDataFunc(f func(key string, data internal.KeyData)) func(engine *Engine) {
+func WithSetKeyDataFunc(f func(database int, key string, data internal.KeyData)) func(engine *Engine) {
 	return func(engine *Engine) {
 		engine.setKeyDataFunc = f
 	}
 }
 
-func WithHandleCommandFunc(f func(command []byte)) func(engine *Engine) {
+func WithHandleCommandFunc(f func(database int, command []byte)) func(engine *Engine) {
 	return func(engine *Engine) {
 		engine.handleCommand = f
 	}
 }
 
-func WithPreambleReadWriter(rw preamble.PreambleReadWriter) func(engine *Engine) {
+func WithPreambleReadWriter(rw preamble.ReadWriter) func(engine *Engine) {
 	return func(engine *Engine) {
 		engine.preambleRW = rw
 	}
 }
 
-func WithAppendReadWriter(rw logstore.AppendReadWriter) func(engine *Engine) {
+func WithAppendReadWriter(rw logstore.ReadWriter) func(engine *Engine) {
 	return func(engine *Engine) {
 		engine.appendRW = rw
 	}
@@ -113,13 +111,12 @@ func NewAOFEngine(options ...func(engine *Engine)) (*Engine, error) {
 		syncStrategy:      "everysec",
 		directory:         "",
 		mut:               sync.Mutex{},
-		logChan:           make(chan []byte, 4096),
 		logCount:          0,
 		startRewriteFunc:  func() {},
 		finishRewriteFunc: func() {},
-		getStateFunc:      func() map[string]internal.KeyData { return nil },
-		setKeyDataFunc:    func(key string, data internal.KeyData) {},
-		handleCommand:     func(command []byte) {},
+		getStateFunc:      func() map[int]map[string]internal.KeyData { return nil },
+		setKeyDataFunc:    func(database int, key string, data internal.KeyData) {},
+		handleCommand:     func(database int, command []byte) {},
 	}
 
 	// Setup AOFEngine options first as these options are used
@@ -154,22 +151,13 @@ func NewAOFEngine(options ...func(engine *Engine)) (*Engine, error) {
 	}
 	engine.appendStore = appendStore
 
-	// 3. Start the goroutine to pick up queued commands in order to write them to the file.
-	// LogCommand will get the open file handler from the struct top perform the AOF operation.
-	go func() {
-		for {
-			c := <-engine.logChan
-			if err := engine.appendStore.Write(c); err != nil {
-				log.Println(fmt.Errorf("new aof engine error: %+v", err))
-			}
-		}
-	}()
-
 	return engine, nil
 }
 
-func (engine *Engine) QueueCommand(command []byte) {
-	engine.logChan <- command
+func (engine *Engine) LogCommand(database int, command []byte) {
+	if err := engine.appendStore.Write(database, command); err != nil {
+		log.Printf("log command error: %+v\n", err)
+	}
 }
 
 func (engine *Engine) RewriteLog() error {
@@ -181,12 +169,12 @@ func (engine *Engine) RewriteLog() error {
 
 	// Create AOF preamble.
 	if err := engine.preambleStore.CreatePreamble(); err != nil {
-		return fmt.Errorf("rewrite log -> create preamble error: %+v", err)
+		return fmt.Errorf("rewrite log error: create preamble error: %+v", err)
 	}
 
 	// Truncate the AOF file.
 	if err := engine.appendStore.Truncate(); err != nil {
-		return fmt.Errorf("rewrite log -> create aof error: %+v", err)
+		return fmt.Errorf("rewrite log error: create aof error: %+v", err)
 	}
 
 	return nil
@@ -194,10 +182,10 @@ func (engine *Engine) RewriteLog() error {
 
 func (engine *Engine) Restore() error {
 	if err := engine.preambleStore.Restore(); err != nil {
-		return fmt.Errorf("restore aof -> restore preamble error: %+v", err)
+		return fmt.Errorf("restore aof error: restore preamble error: %+v", err)
 	}
 	if err := engine.appendStore.Restore(); err != nil {
-		return fmt.Errorf("restore aof -> restore aof error: %+v", err)
+		return fmt.Errorf("restore aof error: restore aof error: %+v", err)
 	}
 	return nil
 }

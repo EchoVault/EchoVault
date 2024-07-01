@@ -15,11 +15,37 @@
 package echovault
 
 import (
+	"github.com/echovault/echovault/internal"
 	"github.com/echovault/echovault/internal/config"
+	"github.com/echovault/echovault/internal/constants"
 )
 
 // DefaultConfig returns the default configuration.
 // This should be used when using EchoVault as an embedded library.
 func DefaultConfig() config.Config {
 	return config.DefaultConfig()
+}
+
+func (server *EchoVault) GetServerInfo() internal.ServerInfo {
+	return internal.ServerInfo{
+		Server:  "echovault",
+		Version: constants.Version,
+		Id:      server.config.ServerID,
+		Mode: func() string {
+			if server.isInCluster() {
+				return "cluster"
+			}
+			return "standalone"
+		}(),
+		Role: func() string {
+			if !server.isInCluster() {
+				return "master"
+			}
+			if server.raft.IsRaftLeader() {
+				return "master"
+			}
+			return "replica"
+		}(),
+		Modules: server.ListModules(),
+	}
 }

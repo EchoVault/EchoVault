@@ -21,6 +21,7 @@ import (
 	"github.com/echovault/echovault/internal"
 	"github.com/echovault/echovault/internal/config"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/memberlist"
@@ -47,7 +48,8 @@ type Opts struct {
 type MemberList struct {
 	options        Opts
 	broadcastQueue *memberlist.TransmitLimitedQueue
-	numOfNodes     int
+	noOfNodesMut   sync.RWMutex
+	noOfNodes      int
 	memberList     *memberlist.Memberlist
 }
 
@@ -55,7 +57,8 @@ func NewMemberList(opts Opts) *MemberList {
 	return &MemberList{
 		options:        opts,
 		broadcastQueue: new(memberlist.TransmitLimitedQueue),
-		numOfNodes:     0,
+		noOfNodesMut:   sync.RWMutex{},
+		noOfNodes:      0,
 	}
 }
 
@@ -74,14 +77,25 @@ func (m *MemberList) MemberListInit(ctx context.Context) {
 		applyDeleteKey: m.options.ApplyDeleteKey,
 	})
 	cfg.Events = NewEventDelegate(EventDelegateOpts{
-		incrementNodes:   func() { m.numOfNodes += 1 },
-		decrementNodes:   func() { m.numOfNodes -= 1 },
+		incrementNodes: func() {
+			m.noOfNodesMut.Lock()
+			defer m.noOfNodesMut.Unlock()
+			m.noOfNodes += 1
+		},
+		decrementNodes: func() {
+			m.noOfNodesMut.Lock()
+			defer m.noOfNodesMut.Unlock()
+			m.noOfNodes -= 1
+		},
 		removeRaftServer: m.options.RemoveRaftServer,
 	})
 
 	m.broadcastQueue.RetransmitMult = 1
 	m.broadcastQueue.NumNodes = func() int {
-		return m.numOfNodes
+		m.noOfNodesMut.RLock()
+		defer m.noOfNodesMut.RUnlock()
+		noOfNodes := m.noOfNodes
+		return noOfNodes
 	}
 
 	list, err := memberlist.Create(cfg)

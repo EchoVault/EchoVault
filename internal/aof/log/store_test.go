@@ -44,7 +44,7 @@ func Test_AppendStore(t *testing.T) {
 		directory        string
 		strategy         string
 		commands         [][]string
-		appendReadWriter log.AppendReadWriter
+		appendReadWriter log.ReadWriter
 	}{
 		{
 			name:      "1. Not passing an AppendReadWriter to NewAppendStore should create a new append file",
@@ -66,7 +66,7 @@ func Test_AppendStore(t *testing.T) {
 				{"SET", "key2", "value2"},
 				{"SET", "key3", "value3"},
 			},
-			appendReadWriter: func() log.AppendReadWriter {
+			appendReadWriter: func() log.ReadWriter {
 				// Create the directory if it does not exist
 				if err := os.MkdirAll(path.Join("./testdata/with_read_writer", "aof"), os.ModePerm); err != nil {
 					t.Error(err)
@@ -95,11 +95,11 @@ func Test_AppendStore(t *testing.T) {
 	for _, test := range tests {
 		done := make(chan struct{}, 1)
 
-		options := []func(store *log.AppendStore){
+		options := []func(store *log.Store){
 			log.WithClock(clock.NewClock()),
 			log.WithDirectory(test.directory),
 			log.WithStrategy(test.strategy),
-			log.WithHandleCommandFunc(func(command []byte) {
+			log.WithHandleCommandFunc(func(database int, command []byte) {
 				for _, c := range test.commands {
 					if bytes.Contains(command, marshalRespCommand(c)) {
 						return
@@ -120,7 +120,7 @@ func Test_AppendStore(t *testing.T) {
 
 			for _, command := range test.commands {
 				b := marshalRespCommand(command)
-				if err = store.Write(b); err != nil {
+				if err = store.Write(0, b); err != nil {
 					t.Error(err)
 				}
 			}

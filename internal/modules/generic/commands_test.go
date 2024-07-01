@@ -17,17 +17,16 @@ package generic_test
 import (
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
-	"testing"
-	"time"
-
 	"github.com/echovault/echovault/echovault"
 	"github.com/echovault/echovault/internal"
 	"github.com/echovault/echovault/internal/clock"
 	"github.com/echovault/echovault/internal/config"
 	"github.com/echovault/echovault/internal/constants"
 	"github.com/tidwall/resp"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
 )
 
 type KeyData struct {
@@ -1898,6 +1897,7 @@ func Test_Generic(t *testing.T) {
 
 	t.Run("Test_HandlerINCR", func(t *testing.T) {
 		t.Parallel()
+
 		conn, err := internal.GetConnection("localhost", port)
 		if err != nil {
 			t.Error(err)
@@ -2020,6 +2020,7 @@ func Test_Generic(t *testing.T) {
 	t.Run("Test_HandlerDECR", func(t *testing.T) {
 		t.Parallel()
 		conn, err := internal.GetConnection("localhost", port)
+
 		if err != nil {
 			t.Error(err)
 			return
@@ -2499,6 +2500,140 @@ func Test_Generic(t *testing.T) {
 					}
 				}
 			})
+		}
+	})
+
+	t.Run("Test_HandleFlush", func(t *testing.T) {
+		t.Parallel()
+
+		port, err := internal.GetFreePort()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		mockServer, err := echovault.NewEchoVault(
+			echovault.WithConfig(config.Config{
+				BindAddr:       "localhost",
+				Port:           uint16(port),
+				DataDir:        "",
+				EvictionPolicy: constants.NoEviction,
+			}),
+		)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		go func() {
+			mockServer.Start()
+		}()
+		t.Cleanup(func() {
+			mockServer.ShutDown()
+		})
+
+		noOfDBs := 4
+
+		// Set values for 3 different databases.
+		for i := 0; i < noOfDBs; i++ {
+			_ = mockServer.SelectDB(i)
+			for k := 1; k <= 3; k++ {
+				_, _, _ = mockServer.Set(
+					fmt.Sprintf("key%d", k),
+					fmt.Sprintf("value%d", k),
+					echovault.SetOptions{},
+				)
+			}
+		}
+
+		// Connect to the server
+		conn, err := internal.GetConnection("localhost", port)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		client := resp.NewConn(conn)
+
+		// Send FLUSHDB command.
+		// This should flush database 0 as it's the default database.
+		if err = client.WriteArray([]resp.Value{resp.StringValue("FLUSHDB")}); err != nil {
+			t.Error(err)
+			return
+		}
+		res, _, err := client.ReadValue()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+
+		if !strings.EqualFold(res.String(), "ok") {
+			t.Errorf("expected OK response, got \"%s\"", res.String())
+			return
+		}
+
+		// Check that database 0 is cleared.
+		_ = mockServer.SelectDB(0)
+		for i := 1; i <= 3; i++ {
+			key := fmt.Sprintf("key%d", i)
+			val, err := mockServer.Get(key)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if val != "" {
+				t.Errorf("expected key %s to be empty, got \"%s\"", key, val)
+				return
+			}
+		}
+
+		// Check that all the other databases still have their values.
+		for i := 1; i < noOfDBs; i++ {
+			_ = mockServer.SelectDB(i)
+			for k := 1; k < 3; k++ {
+				key := fmt.Sprintf("key%d", k)
+				value := fmt.Sprintf("value%d", k)
+				val, err := mockServer.Get(key)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if val != value {
+					t.Errorf("expected value for key %s to be \"%s\", got \"%s\"", key, value, val)
+					return
+				}
+			}
+		}
+
+		// Sent FLUSHALL command.
+		// This should flush all the databases.
+		if err = client.WriteArray([]resp.Value{resp.StringValue("FLUSHALL")}); err != nil {
+			t.Error(err)
+			return
+		}
+		res, _, err = client.ReadValue()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+
+		if !strings.EqualFold(res.String(), "ok") {
+			t.Errorf("expected OK response, got \"%s\"", res.String())
+			return
+		}
+
+		// Check that all the databases are cleared.
+		for i := 0; i < noOfDBs; i++ {
+			_ = mockServer.SelectDB(i)
+			for k := 1; k < 3; k++ {
+				key := fmt.Sprintf("key%d", k)
+				val, err := mockServer.Get(key)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if val != "" {
+					t.Errorf("expected empty string at key %s, got \"%s\"", key, val)
+					return
+				}
+			}
 		}
 	})
 }

@@ -57,7 +57,7 @@ func Test_CacheLFU(t *testing.T) {
 
 	mut.Lock()
 	for i := 0; i < len(expectedKeys); i++ {
-		key := heap.Pop(&cache).(string)
+		key := heap.Pop(cache).(string)
 		if key != expectedKeys[i] {
 			t.Errorf("expected popped key at index %d to be %s, got %s", i, expectedKeys[i], key)
 		}
