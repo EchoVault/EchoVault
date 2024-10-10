@@ -1825,3 +1825,49 @@ func TestSugarDB_TYPE(t *testing.T) {
 		})
 	}
 }
+
+func TestSugarDB_MOVE(t *testing.T) {
+	server := createSugarDB()
+
+	tests := []struct {
+		name        string
+		presetValue interface{}
+		key         string
+		want        int
+	}{
+		{
+			name:        "1. Move key successfully",
+			presetValue: "value1",
+			key:         "key1",
+			want:        1,
+		},
+		{
+			name:        "2. Attempt to move key, unsuccessful",
+			presetValue: nil,
+			key:         "key2",
+			want:        0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Log(tt.name)
+			if tt.presetValue != nil {
+				err := presetValue(server, context.Background(), tt.key, tt.presetValue)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+			}
+
+			got, err := server.Move(tt.key, 1)
+			if err != nil {
+				t.Error(err)
+			}
+
+			if got != tt.want {
+				t.Errorf("MOVE() got %v, want %v", got, tt.want)
+			}
+
+		})
+	}
+}

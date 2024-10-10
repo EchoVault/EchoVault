@@ -3332,6 +3332,145 @@ func Test_Generic(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("Test_HandleMOVE", func(t *testing.T) {
+		t.Parallel()
+
+		port, err := internal.GetFreePort()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		mockServer, err := sugardb.NewSugarDB(
+			sugardb.WithConfig(config.Config{
+				BindAddr:       "localhost",
+				Port:           uint16(port),
+				DataDir:        "",
+				EvictionPolicy: constants.NoEviction,
+			}),
+		)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		go func() {
+			mockServer.Start()
+		}()
+		t.Cleanup(func() {
+			mockServer.ShutDown()
+		})
+
+		conn, err := internal.GetConnection("localhost", port)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer func() {
+			_ = conn.Close()
+		}()
+		client := resp.NewConn(conn)
+
+		tests := []struct {
+			name     string
+			key      string
+			value    string
+			preset   bool
+			expected int
+		}{
+			{
+				name:     "1. Move key.",
+				key:      "MoveKey1",
+				value:    "value1",
+				preset:   true,
+				expected: 1,
+			},
+			{
+				name:     "2. Move key that already exists in new database.",
+				key:      "MoveKey1",
+				value:    "value1",
+				preset:   false,
+				expected: 0,
+			},
+			{
+				name:     "3. Move key that doesn't exist in current database.",
+				key:      "MoveKey3",
+				value:    "value3",
+				preset:   false,
+				expected: 0,
+			},
+		}
+
+		for _, tt := range tests {
+
+			t.Log(tt.name)
+
+			// Preset the values
+			if tt.preset {
+				err = client.WriteArray([]resp.Value{resp.StringValue("SET"), resp.StringValue(tt.key), resp.StringValue(tt.value)})
+				if err != nil {
+					t.Error(err)
+				}
+
+				res, _, err := client.ReadValue()
+				if err != nil {
+					t.Error(err)
+				}
+
+				if !strings.EqualFold(res.String(), "ok") {
+					t.Errorf("expected preset response to be \"OK\", got %s", res.String())
+				}
+			}
+
+			if err = client.WriteArray([]resp.Value{resp.StringValue("MOVE"), resp.StringValue(tt.key), resp.StringValue("1")}); err != nil {
+				t.Error(err)
+			}
+
+			res, _, err := client.ReadValue()
+			if err != nil {
+				t.Error(err)
+			}
+
+			if res.Integer() != tt.expected {
+				t.Errorf("expected value %v, got %v", tt.expected, res.Integer())
+				t.Error(mockServer.Get(tt.key))
+			}
+
+			// check other db
+			if tt.expected == 1 {
+
+				actual, err := mockServer.Get(tt.key)
+				if err != nil {
+					t.Error(err)
+				}
+
+				if actual != "" {
+					t.Errorf("when verifying key was moved from the original db, expected to get empty string but got %q", actual)
+				}
+
+				err = mockServer.SelectDB(1)
+				if err != nil {
+					t.Error(err)
+				}
+
+				actual, err = mockServer.Get(tt.key)
+				if err != nil {
+					t.Error(err)
+				}
+
+				if actual != tt.value {
+					t.Errorf("when verifying key was moved to the new db, expected to get value %q, but got %q", tt.value, actual)
+				}
+
+				err = mockServer.SelectDB(0)
+				if err != nil {
+					t.Error(err)
+				}
+
+			}
+
+		}
+	})
+
 }
 
 // Certain commands will need to be tested in a server with an eviction policy.

@@ -267,3 +267,14 @@ func objIdleTimeKeyFunc(cmd []string) (internal.KeyExtractionFuncResult, error) 
 		WriteKeys: make([]string, 0),
 	}, nil
 }
+
+func moveKeyFunc(cmd []string) (internal.KeyExtractionFuncResult, error) {
+	if len(cmd) != 3 {
+		return internal.KeyExtractionFuncResult{}, errors.New(constants.WrongArgsResponse)
+	}
+	return internal.KeyExtractionFuncResult{
+		Channels:  make([]string, 0),
+		ReadKeys:  make([]string, 0),
+		WriteKeys: []string{cmd[1]},
+	}, nil
+}

@@ -15,6 +15,7 @@
 package generic
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -869,6 +870,51 @@ func handleObjIdleTime(params internal.HandlerFuncParams) ([]byte, error) {
 	return []byte(fmt.Sprintf("+%v\r\n", idletime)), nil
 }
 
+func handleMove(params internal.HandlerFuncParams) ([]byte, error) {
+	keys, err := moveKeyFunc(params.Command)
+	if err != nil {
+		return nil, err
+	}
+	key := keys.WriteKeys[0]
+
+	// get key, destination db and current db
+	values := params.GetValues(params.Context, []string{key})
+	value, _ := values[key]
+	if value == nil {
+		return []byte(fmt.Sprintf("+%v\r\n", 0)), nil
+	}
+
+	newdb, err := strconv.Atoi(params.Command[2])
+	if err != nil {
+		return nil, err
+	}
+	if newdb < 0 {
+		return nil, errors.New("database must be >= 0")
+	}
+
+	// see if key exists in destination db, if not set key there
+	ctx := context.WithValue(params.Context, "Database", newdb)
+	keyExists := params.KeysExist(ctx, keys.WriteKeys)[key]
+	if !keyExists {
+
+		err = params.SetValues(ctx, map[string]interface{}{key: value})
+		if err != nil {
+			return nil, err
+		}
+
+		// remove key from source db
+		err = params.DeleteKey(params.Context, key)
+		if err != nil {
+			return nil, err
+		}
+
+		return []byte(fmt.Sprintf("+%v\r\n", 1)), nil
+
+	}
+
+	return []byte(fmt.Sprintf("+%v\r\n", 0)), nil
+}
+
 func Commands() []internal.Command {
 	return []internal.Command{
 		{
@@ -1208,6 +1254,15 @@ The command is only available when the maxmemory-policy configuration directive 
 			Sync:              false,
 			KeyExtractionFunc: objIdleTimeKeyFunc,
 			HandlerFunc:       handleObjIdleTime,
+		},
+		{
+			Command:           "move",
+			Module:            constants.GenericModule,
+			Categories:        []string{constants.KeyspaceCategory, constants.WriteCategory, constants.FastCategory},
+			Description:       `(MOVE key db) Moves a key from the selected database to the specified database.`,
+			Sync:              true,
+			KeyExtractionFunc: moveKeyFunc,
+			HandlerFunc:       handleMove,
 		},
 	}
 }

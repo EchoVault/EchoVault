@@ -1,0 +1,48 @@
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# MOVE
+
+### Syntax
+```
+MOVE key database
+```
+
+### Module
+<span className="acl-category">generic</span>
+
+### Categories
+<span className="acl-category">fast</span>
+<span className="acl-category">keyspace</span>
+<span className="acl-category">write</span>
+
+### Description
+Move key from currently selected database to specified destination database. Returns 1 if successful, if 
+key already exists in the destination database, or key does not exist in the source database, it does nothing and returns 0.
+
+### Examples
+
+<Tabs
+  defaultValue="go"
+  values={[
+    { label: 'Go (Embedded)', value: 'go', },
+    { label: 'CLI', value: 'cli', },
+  ]}
+>
+  <TabItem value="go">
+    Move the key to database 1:
+    ```go
+    db, err := sugardb.NewSugarDB()
+    if err != nil {
+      log.Fatal(err)
+    }
+    value, err := db.Move("key", 1)
+    ```
+  </TabItem>
+  <TabItem value="cli">
+    Move the key to database 1:
+    ```
+    > MOVE key 1
+    ```
+  </TabItem>
+</Tabs>

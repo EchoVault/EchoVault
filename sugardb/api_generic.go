@@ -623,7 +623,7 @@ func (server *SugarDB) GetDel(key string) (string, error) {
 //
 // `option` - GetExOption - one of EX, PX, EXAT, PXAT, PERSIST. Can be nil.
 //
-// `unixtime` - Number of seconds or miliseconds from now.
+// `unixtime` - int - Number of seconds or miliseconds from now.
 //
 // Returns: A string representing the value at the specified key. If the value does not exist, an empty string is returned.
 func (server *SugarDB) GetEx(key string, option GetExOption, unixtime int) (string, error) {
@@ -717,4 +717,22 @@ func (server *SugarDB) Type(key string) (string, error) {
 		return "", err
 	}
 	return internal.ParseStringResponse(b)
+}
+
+// Move key from currently selected database to specified destination database and return 1.
+// When key already exists in the destination database, or it does not exist in the source database, it does nothing and returns 0.
+//
+// Parameters:
+//
+// `key` - string - the key that should be moved.
+//
+// `destinationDB` - int - the database the key should be moved to.
+//
+// Returns: 1 if successful, 0 if unsuccessful.
+func (server *SugarDB) Move(key string, destinationDB int) (int, error) {
+	b, err := server.handleCommand(server.context, internal.EncodeCommand([]string{"Move", key, strconv.Itoa(destinationDB)}), nil, false, true)
+	if err != nil {
+		return 0, err
+	}
+	return internal.ParseIntegerResponse(b)
 }
