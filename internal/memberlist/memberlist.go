@@ -18,11 +18,12 @@ import (
 	"context"
 	"crypto/md5"
 	"fmt"
-	"github.com/echovault/sugardb/internal"
-	"github.com/echovault/sugardb/internal/config"
 	"log"
 	"sync"
 	"time"
+
+	"github.com/echovault/sugardb/internal"
+	"github.com/echovault/sugardb/pkg/config"
 
 	"github.com/hashicorp/memberlist"
 	"github.com/hashicorp/raft"

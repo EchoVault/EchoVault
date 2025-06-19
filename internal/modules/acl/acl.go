@@ -21,11 +21,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/echovault/sugardb/internal"
-	"github.com/echovault/sugardb/internal/config"
-	"github.com/echovault/sugardb/internal/constants"
-	"github.com/gobwas/glob"
-	"gopkg.in/yaml.v3"
 	"log"
 	"net"
 	"os"
@@ -35,6 +30,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/echovault/sugardb/internal"
+	"github.com/echovault/sugardb/internal/constants"
+	"github.com/echovault/sugardb/pkg/config"
+	"github.com/gobwas/glob"
+	"gopkg.in/yaml.v3"
 )
 
 type Connection struct {

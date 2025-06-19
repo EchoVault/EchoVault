@@ -18,14 +18,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/echovault/sugardb/internal"
-	"github.com/echovault/sugardb/internal/config"
-	"github.com/hashicorp/raft"
 	"io"
 	"log"
 	"net"
 	"strings"
 	"time"
+
+	"github.com/echovault/sugardb/internal"
+	"github.com/echovault/sugardb/pkg/config"
+	"github.com/hashicorp/raft"
 )
 
 type FSMOpts struct {

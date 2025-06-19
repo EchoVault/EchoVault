@@ -20,12 +20,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"github.com/echovault/sugardb/internal"
-	"github.com/echovault/sugardb/internal/clock"
-	"github.com/echovault/sugardb/internal/config"
-	"github.com/echovault/sugardb/internal/constants"
-	"github.com/go-test/deep"
-	"github.com/tidwall/resp"
 	"io"
 	"math"
 	"net"
@@ -35,6 +29,13 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/echovault/sugardb/internal"
+	"github.com/echovault/sugardb/internal/clock"
+	"github.com/echovault/sugardb/internal/constants"
+	"github.com/echovault/sugardb/pkg/config"
+	"github.com/go-test/deep"
+	"github.com/tidwall/resp"
 )
 
 type ClientServerPair struct {

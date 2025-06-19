@@ -21,15 +21,16 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/echovault/sugardb/internal/modules/connection"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/echovault/sugardb/internal/modules/connection"
+
 	"github.com/echovault/sugardb/internal"
-	"github.com/echovault/sugardb/internal/config"
 	"github.com/echovault/sugardb/internal/constants"
+	"github.com/echovault/sugardb/pkg/config"
 	"github.com/echovault/sugardb/sugardb"
 	"github.com/tidwall/resp"
 )

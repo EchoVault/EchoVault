@@ -18,12 +18,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/echovault/sugardb/internal"
-	"github.com/echovault/sugardb/internal/config"
-	"github.com/hashicorp/memberlist"
-	"github.com/hashicorp/raft"
 	"log"
 	"time"
+
+	"github.com/echovault/sugardb/internal"
+	"github.com/echovault/sugardb/pkg/config"
+	"github.com/hashicorp/memberlist"
+	"github.com/hashicorp/raft"
 )
 
 type Delegate struct {
