@@ -23,9 +23,9 @@ import (
 	"testing"
 
 	"github.com/echovault/sugardb/internal"
-	"github.com/echovault/sugardb/internal/config"
 	"github.com/echovault/sugardb/internal/constants"
 	"github.com/echovault/sugardb/internal/modules/sorted_set"
+	"github.com/echovault/sugardb/pkg/config"
 	"github.com/echovault/sugardb/sugardb"
 	"github.com/tidwall/resp"
 )

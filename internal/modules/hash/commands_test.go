@@ -25,9 +25,9 @@ import (
 
 	"github.com/echovault/sugardb/internal"
 	"github.com/echovault/sugardb/internal/clock"
-	"github.com/echovault/sugardb/internal/config"
 	"github.com/echovault/sugardb/internal/constants"
 	"github.com/echovault/sugardb/internal/modules/hash"
+	"github.com/echovault/sugardb/pkg/config"
 	"github.com/echovault/sugardb/sugardb"
 	"github.com/tidwall/resp"
 )

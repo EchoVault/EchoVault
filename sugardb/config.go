@@ -19,8 +19,8 @@ import (
 	"time"
 
 	"github.com/echovault/sugardb/internal"
-	"github.com/echovault/sugardb/internal/config"
 	"github.com/echovault/sugardb/internal/constants"
+	"github.com/echovault/sugardb/pkg/config"
 )
 
 // DefaultConfig returns the default configuration.

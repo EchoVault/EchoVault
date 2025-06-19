@@ -16,15 +16,16 @@ package sugardb
 
 import (
 	"context"
-	"github.com/echovault/sugardb/internal"
-	"github.com/echovault/sugardb/internal/clock"
-	"github.com/echovault/sugardb/internal/config"
-	"github.com/echovault/sugardb/internal/constants"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/echovault/sugardb/internal"
+	"github.com/echovault/sugardb/internal/clock"
+	"github.com/echovault/sugardb/internal/constants"
+	"github.com/echovault/sugardb/pkg/config"
 )
 
 func TestSugarDB_Generic(t *testing.T) {
@@ -2221,7 +2222,7 @@ func TestSugarDB_Generic(t *testing.T) {
 				t.Cleanup(func() {
 					server.ShutDown()
 				})
-				
+
 				if tt.presetValues != nil {
 					for k, v := range tt.presetValues {
 						err := presetValue(server, context.Background(), k, v)

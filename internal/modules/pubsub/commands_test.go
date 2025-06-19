@@ -15,16 +15,17 @@
 package pubsub_test
 
 import (
-	"github.com/echovault/sugardb/internal"
-	"github.com/echovault/sugardb/internal/config"
-	"github.com/echovault/sugardb/internal/constants"
-	"github.com/echovault/sugardb/sugardb"
-	"github.com/tidwall/resp"
 	"net"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/echovault/sugardb/internal"
+	"github.com/echovault/sugardb/internal/constants"
+	"github.com/echovault/sugardb/pkg/config"
+	"github.com/echovault/sugardb/sugardb"
+	"github.com/tidwall/resp"
 )
 
 func setUpServer(port int) (*sugardb.SugarDB, error) {

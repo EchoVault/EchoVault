@@ -16,12 +16,13 @@ package raft
 
 import (
 	"encoding/json"
-	"github.com/echovault/sugardb/internal"
-	"github.com/echovault/sugardb/internal/config"
-	"github.com/hashicorp/raft"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/echovault/sugardb/internal"
+	"github.com/echovault/sugardb/pkg/config"
+	"github.com/hashicorp/raft"
 )
 
 type SnapshotOpts struct {

@@ -17,19 +17,19 @@ package generic_test
 import (
 	"errors"
 	"fmt"
+	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
-	"sort"
-	"reflect"
 
 	"github.com/echovault/sugardb/internal"
 	"github.com/echovault/sugardb/internal/clock"
-	"github.com/echovault/sugardb/internal/config"
 	"github.com/echovault/sugardb/internal/constants"
 	"github.com/echovault/sugardb/internal/modules/set"
 	"github.com/echovault/sugardb/internal/modules/sorted_set"
+	"github.com/echovault/sugardb/pkg/config"
 	"github.com/echovault/sugardb/sugardb"
 	"github.com/tidwall/resp"
 )
@@ -3981,7 +3981,7 @@ func Test_Generic(t *testing.T) {
 				if !strings.EqualFold(res.String(), "ok") {
 					t.Errorf("expected FLUSHALL response to be \"ok\", got %s", res.String())
 				}
-				
+
 				// preset values
 				if test.presetValues != nil {
 					for k, v := range test.presetValues {

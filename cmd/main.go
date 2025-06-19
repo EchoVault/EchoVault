@@ -16,13 +16,14 @@ package main
 
 import (
 	"context"
-	"github.com/echovault/sugardb/internal"
-	"github.com/echovault/sugardb/internal/config"
-	"github.com/echovault/sugardb/sugardb"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/echovault/sugardb/internal"
+	"github.com/echovault/sugardb/pkg/config"
+	"github.com/echovault/sugardb/sugardb"
 )
 
 func main() {
