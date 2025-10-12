@@ -96,7 +96,7 @@ func (r *Raft) RaftInit(ctx context.Context) {
 	}
 
 	bindAddr := fmt.Sprintf("%s:%d", conf.RaftBindAddr, conf.RaftBindPort)
-	advertiseAddr, err := net.ResolveTCPAddr("tcp", bindAddr)
+	advertiseAddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", conf.RaftAdvertiseAddr, conf.RaftAdvertisePort))
 	if err != nil {
 		log.Fatal(err)
 	}

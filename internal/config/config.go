@@ -61,8 +61,10 @@ type Config struct {
 	CommitTimeout     time.Duration `json:"CommitTimeout" yaml:"CommitTimeout"`
 	Modules           []string      `json:"Plugins" yaml:"Plugins"`
 	DiscoveryPort     uint16        `json:"DiscoveryPort" yaml:"DiscoveryPort"`
-	RaftBindAddr      string
-	RaftBindPort      uint16
+	RaftBindAddr      string        `json:"RaftBindAddr" yaml:"RaftBindAddr"`
+	RaftBindPort      uint16        `json:"RaftBindPort" yaml:"RaftBindPort"`
+	RaftAdvertiseAddr string        `json:"RaftAdvertiseAddr" yaml:"RaftAdvertiseAddr"`
+	RaftAdvertisePort uint16        `json:"RaftAdvertisePort" yaml:"RaftAdvertisePort"`
 }
 
 func GetConfig() (Config, error) {
@@ -148,12 +150,25 @@ There is no limit by default.`, func(memory string) error {
 			return nil
 		})
 
+	internalRaftAddress, e := internal.GetIPAddress()
+	if e != nil {
+		internalRaftAddress = "127.0.0.1"
+	}
+	internalRaftPort, e := internal.GetFreePort()
+	if e != nil {
+		internalRaftPort = 7947
+	}
+
 	tls := flag.Bool("tls", false, "Start the echovault in TLS mode. Default is false.")
 	mtls := flag.Bool("mtls", false, "Use mTLS to verify the client.")
 	port := flag.Int("port", 7480, "Port to use. Default is 7480")
 	serverId := flag.String("server-id", "1", "SugarDB ID in raft cluster. Leave empty for client.")
 	joinAddr := flag.String("join-addr", "", "Address of cluster member in a cluster to you want to join.")
 	bindAddr := flag.String("bind-addr", "127.0.0.1", "Address to bind the echovault to.")
+	raftBindAddr := flag.String("raft-bind-addr", internalRaftAddress, "Raft Address to bind to.")
+	raftBindPort := flag.Int("raft-bind-port", internalRaftPort, "Raft Port to bind to.")
+	raftAdvertiseAddr := flag.String("raft-advertise-addr", internalRaftAddress, "Raft Address to advertise.")
+	raftAdvertisePort := flag.Int("raft-advertise-port", internalRaftPort, "Raft Port to bind to advertise")
 	discoveryPort := flag.Uint("discovery-port", 7946, "Port to use for memberlist cluster discovery.")
 	dataDir := flag.String("data-dir", ".", "Directory to store snapshots and logs.")
 	bootstrapCluster := flag.Bool("bootstrap-cluster", false, "Whether this instance should bootstrap a new cluster.")
@@ -191,15 +206,6 @@ It is a plain text value by default but you can provide a SHA256 hash by adding 
 
 	flag.Parse()
 
-	raftBindAddr, e := internal.GetIPAddress()
-	if e != nil {
-		return Config{}, e
-	}
-	raftBindPort, e := internal.GetFreePort()
-	if e != nil {
-		return Config{}, e
-	}
-
 	conf := Config{
 		CertKeyPairs:      certKeyPairs,
 		ClientCAs:         clientCAs,
@@ -229,8 +235,10 @@ It is a plain text value by default but you can provide a SHA256 hash by adding 
 		CommitTimeout:     *commitTimeout,
 		Modules:           modules,
 		DiscoveryPort:     uint16(*discoveryPort),
-		RaftBindAddr:      raftBindAddr,
-		RaftBindPort:      uint16(raftBindPort),
+		RaftBindAddr:      *raftBindAddr,
+		RaftBindPort:      uint16(*raftBindPort),
+		RaftAdvertiseAddr: *raftAdvertiseAddr,
+		RaftAdvertisePort: uint16(*raftAdvertisePort),
 	}
 
 	if len(*config) > 0 {
