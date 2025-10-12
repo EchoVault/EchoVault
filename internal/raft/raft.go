@@ -140,12 +140,13 @@ func (r *Raft) RaftInit(ctx context.Context) {
 
 	if conf.BootstrapCluster {
 		// Error can be safely ignored if we're already leader
+		address := raft.ServerAddress(fmt.Sprintf("%s:%d", conf.RaftAdvertiseAddr, conf.RaftAdvertisePort))
 		_ = raftServer.BootstrapCluster(raft.Configuration{
 			Servers: []raft.Server{
 				{
 					Suffrage: raft.Voter,
 					ID:       raft.ServerID(conf.ServerID),
-					Address:  raft.ServerAddress(conf.RaftBindAddr),
+					Address:  address,
 				},
 			},
 		}).Error()
