@@ -143,12 +143,12 @@ func WithServerID(serverID string) func(sugardb *SugarDB) {
 	}
 }
 
-// WithJoinAddr is an option to the NewSugarDB function that allows you to pass a
-// custom JoinAddr to SugarDB.
+// WithJoinAddr is an option to the NewSugarDB function that allows you to pass
+// custom JoinAddr addresses to SugarDB.
 // If not specified, SugarDB will use the default configuration from config.DefaultConfig().
-func WithJoinAddr(joinAddr string) func(sugardb *SugarDB) {
+func WithJoinAddr(joinAddrs ...string) func(sugardb *SugarDB) {
 	return func(sugardb *SugarDB) {
-		sugardb.config.JoinAddr = joinAddr
+		sugardb.config.JoinAddr = joinAddrs
 	}
 }
 

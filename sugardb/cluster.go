@@ -23,7 +23,7 @@ import (
 )
 
 func (server *SugarDB) isInCluster() bool {
-	return server.config.BootstrapCluster || server.config.JoinAddr != ""
+	return server.config.BootstrapCluster || len(server.config.JoinAddr) > 0
 }
 
 func (server *SugarDB) raftApplyDeleteKey(ctx context.Context, key string) error {

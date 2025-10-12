@@ -108,11 +108,11 @@ func (m *MemberList) MemberListInit(ctx context.Context) {
 		log.Fatal(err)
 	}
 
-	if m.options.Config.JoinAddr != "" {
+	if len(m.options.Config.JoinAddr) > 0 {
 		backoffPolicy := internal.RetryBackoff(retry.NewFibonacci(1*time.Second), 5, 200*time.Millisecond, 0, 0)
 
 		err = retry.Do(ctx, backoffPolicy, func(ctx context.Context) error {
-			_, err = list.Join([]string{m.options.Config.JoinAddr})
+			_, err = list.Join(m.options.Config.JoinAddr)
 			if err != nil {
 				return retry.RetryableError(err)
 			}

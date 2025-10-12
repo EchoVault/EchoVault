@@ -39,7 +39,7 @@ type Config struct {
 	ClientCAs         []string      `json:"ClientCAs" yaml:"ClientCAs"`
 	Port              uint16        `json:"Port" yaml:"Port"`
 	ServerID          string        `json:"ServerId" yaml:"ServerId"`
-	JoinAddr          string        `json:"JoinAddr" yaml:"JoinAddr"`
+	JoinAddr          []string      `json:"JoinAddr" yaml:"JoinAddr"`
 	AdvertiseAddr     string        `json:"AdvertiseAddr" yaml:"AdvertiseAddr"`
 	BindAddr          string        `json:"BindAddr" yaml:"BindAddr"`
 	DataDir           string        `json:"DataDir" yaml:"DataDir"`
@@ -151,6 +151,12 @@ There is no limit by default.`, func(memory string) error {
 			return nil
 		})
 
+	var joinAddrs []string
+	flag.Func("join-addr", "Address of cluster member to join. Can be specified multiple times.", func(s string) error {
+		joinAddrs = append(joinAddrs, s)
+		return nil
+	})
+
 	internalRaftAddress, e := internal.GetIPAddress()
 	if e != nil {
 		return Config{}, e
@@ -165,7 +171,6 @@ There is no limit by default.`, func(memory string) error {
 	mtls := flag.Bool("mtls", false, "Use mTLS to verify the client.")
 	port := flag.Int("port", 7480, "Port to use. Default is 7480")
 	serverId := flag.String("server-id", "1", "SugarDB ID in raft cluster. Leave empty for client.")
-	joinAddr := flag.String("join-addr", "", "Address of cluster member in a cluster to you want to join.")
 	advertiseAddr := flag.String("advertise-addr", "127.0.0.1", "Address to bind the echovault to.")
 	bindAddr := flag.String("bind-addr", "127.0.0.1", "Address to bind the echovault to.")
 	raftBindAddr := flag.String("raft-bind-addr", internalRaftAddress, "Raft Address to bind to.")
@@ -216,7 +221,7 @@ It is a plain text value by default but you can provide a SHA256 hash by adding 
 		MTLS:              *mtls,
 		Port:              uint16(*port),
 		ServerID:          *serverId,
-		JoinAddr:          *joinAddr,
+		JoinAddr:          joinAddrs,
 		AdvertiseAddr:     *advertiseAddr,
 		BindAddr:          *bindAddr,
 		DataDir:           *dataDir,

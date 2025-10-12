@@ -18,7 +18,7 @@ func DefaultConfig() Config {
 		ClientCAs:         make([]string, 0),
 		Port:              7480,
 		ServerID:          "",
-		JoinAddr:          "",
+		JoinAddr:          make([]string, 0),
 		AdvertiseAddr:     "localhost",
 		BindAddr:          "localhost",
 		RaftBindAddr:      raftBindAddr,
