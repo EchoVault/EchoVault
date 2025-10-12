@@ -69,6 +69,8 @@ func (m *MemberList) MemberListInit(ctx context.Context) {
 	cfg.Name = m.options.Config.ServerID
 	cfg.BindAddr = m.options.Config.BindAddr
 	cfg.BindPort = int(m.options.Config.DiscoveryPort)
+	cfg.AdvertiseAddr = m.options.Config.AdvertiseAddr
+	cfg.AdvertisePort = int(m.options.Config.DiscoveryPort)
 	cfg.Delegate = NewDelegate(DelegateOpts{
 		config:         m.options.Config,
 		broadcastQueue: m.broadcastQueue,
