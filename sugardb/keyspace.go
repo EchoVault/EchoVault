@@ -671,15 +671,26 @@ func (server *SugarDB) evictKeysWithExpiredTTL(ctx context.Context) error {
 	}
 
 	server.keysWithExpiry.rwMutex.RLock()
+	defer server.keysWithExpiry.rwMutex.RUnlock()
 
 	database := ctx.Value("Database").(int)
+
+	keysWithExpiryForDB := server.keysWithExpiry.keys[database]
+	if len(keysWithExpiryForDB) == 0 {
+		return nil
+	}
 
 	// Sample size should be the configured sample size, or the size of the keys with expiry,
 	// whichever one is smaller.
 	sampleSize := int(server.config.EvictionSample)
-	if len(server.keysWithExpiry.keys[database]) < sampleSize {
-		sampleSize = len(server.keysWithExpiry.keys)
+	if len(keysWithExpiryForDB) < sampleSize {
+		sampleSize = len(keysWithExpiryForDB)
 	}
+
+	if sampleSize == 0 {
+		return nil
+	}
+
 	keys := make([]string, sampleSize)
 
 	deletedCount := 0
@@ -687,18 +698,17 @@ func (server *SugarDB) evictKeysWithExpiredTTL(ctx context.Context) error {
 
 	var idx int
 	var key string
-	for i := 0; i < len(keys); i++ {
+	for i := 0; i < sampleSize; i++ {
 		for {
 			// Retry retrieval of a random key until we find a key that is not already in the list of sampled keys.
-			idx = rand.Intn(len(server.keysWithExpiry.keys))
-			key = server.keysWithExpiry.keys[database][idx]
+			idx = rand.Intn(len(keysWithExpiryForDB))
+			key = keysWithExpiryForDB[idx]
 			if !slices.Contains(keys, key) {
 				keys[i] = key
 				break
 			}
 		}
 	}
-	server.keysWithExpiry.rwMutex.RUnlock()
 
 	// Loop through the keys and delete them if they're expired
 	server.storeLock.Lock()
@@ -740,11 +750,6 @@ func (server *SugarDB) evictKeysWithExpiredTTL(ctx context.Context) error {
 				return fmt.Errorf("evictKeysWithExpiredTTL -> cluster delete: %+v", err)
 			}
 		}
-	}
-
-	// If sampleSize is 0, there's no need to calculate deleted percentage.
-	if sampleSize == 0 {
-		return nil
 	}
 
 	log.Printf("%d keys sampled, %d keys deleted\n", sampleSize, deletedCount)
