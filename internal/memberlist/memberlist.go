@@ -133,7 +133,7 @@ func (m *MemberList) broadcastRaftAddress() {
 		NodeMeta: NodeMeta{
 			ServerID: raft.ServerID(m.options.Config.ServerID),
 			RaftAddr: raft.ServerAddress(fmt.Sprintf("%s:%d",
-				m.options.Config.RaftBindAddr, m.options.Config.RaftBindPort)),
+				m.options.Config.RaftAdvertiseAddr, m.options.Config.RaftAdvertisePort)),
 		},
 	}
 	m.broadcastQueue.QueueBroadcast(&msg)
