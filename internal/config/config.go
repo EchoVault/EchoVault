@@ -152,11 +152,12 @@ There is no limit by default.`, func(memory string) error {
 
 	internalRaftAddress, e := internal.GetIPAddress()
 	if e != nil {
-		internalRaftAddress = "127.0.0.1"
+		return Config{}, e
 	}
-	internalRaftPort, e := internal.GetFreePort()
+
+	internalFreePort, e := internal.GetFreePort()
 	if e != nil {
-		internalRaftPort = 7947
+		return Config{}, e
 	}
 
 	tls := flag.Bool("tls", false, "Start the echovault in TLS mode. Default is false.")
@@ -166,9 +167,9 @@ There is no limit by default.`, func(memory string) error {
 	joinAddr := flag.String("join-addr", "", "Address of cluster member in a cluster to you want to join.")
 	bindAddr := flag.String("bind-addr", "127.0.0.1", "Address to bind the echovault to.")
 	raftBindAddr := flag.String("raft-bind-addr", internalRaftAddress, "Raft Address to bind to.")
-	raftBindPort := flag.Int("raft-bind-port", internalRaftPort, "Raft Port to bind to.")
+	raftBindPort := flag.Int("raft-bind-port", internalFreePort, "Raft Port to bind to.")
 	raftAdvertiseAddr := flag.String("raft-advertise-addr", internalRaftAddress, "Raft Address to advertise.")
-	raftAdvertisePort := flag.Int("raft-advertise-port", internalRaftPort, "Raft Port to bind to advertise")
+	raftAdvertisePort := flag.Int("raft-advertise-port", internalFreePort, "Raft Port to bind to advertise")
 	discoveryPort := flag.Uint("discovery-port", 7946, "Port to use for memberlist cluster discovery.")
 	dataDir := flag.String("data-dir", ".", "Directory to store snapshots and logs.")
 	bootstrapCluster := flag.Bool("bootstrap-cluster", false, "Whether this instance should bootstrap a new cluster.")
