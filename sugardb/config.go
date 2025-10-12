@@ -152,6 +152,15 @@ func WithJoinAddr(joinAddr string) func(sugardb *SugarDB) {
 	}
 }
 
+// WithAdvertiseAddr is an option to the NewSugarDB function that allows you to pass a
+// custom AdvertiseAddr to SugarDB.
+// If not specified, SugarDB will use the default configuration from config.DefaultConfig().
+func WithAdvertiseAddr(advertiseAddr string) func(sugardb *SugarDB) {
+	return func(sugardb *SugarDB) {
+		sugardb.config.AdvertiseAddr = advertiseAddr
+	}
+}
+
 // WithBindAddr is an option to the NewSugarDB function that allows you to pass a
 // custom BindAddr to SugarDB.
 // If not specified, SugarDB will use the default configuration from config.DefaultConfig().
@@ -376,5 +385,23 @@ func WithRaftBindAddr(raftBindAddr string) func(sugardb *SugarDB) {
 func WithRaftBindPort(raftBindPort uint16) func(sugardb *SugarDB) {
 	return func(sugardb *SugarDB) {
 		sugardb.config.RaftBindPort = raftBindPort
+	}
+}
+
+// WithRaftAdvertiseAddr is an option to the NewSugarDB function that allows you to pass a
+// custom RaftAdvertiseAddr to SugarDB.
+// If not specified, SugarDB will use the default configuration from config.DefaultConfig().
+func WithRaftAdvertiseAddr(raftAdvertiseAddr string) func(sugardb *SugarDB) {
+	return func(sugardb *SugarDB) {
+		sugardb.config.RaftAdvertiseAddr = raftAdvertiseAddr
+	}
+}
+
+// WithRaftAdvertisePort is an option to the NewSugarDB function that allows you to pass a
+// custom RaftAdvertisePort to SugarDB.
+// If not specified, SugarDB will use the default configuration from config.DefaultConfig().
+func WithRaftAdvertisePort(raftAdvertisePort uint16) func(sugardb *SugarDB) {
+	return func(sugardb *SugarDB) {
+		sugardb.config.RaftAdvertisePort = raftAdvertisePort
 	}
 }

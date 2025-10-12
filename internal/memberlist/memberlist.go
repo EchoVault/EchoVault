@@ -18,11 +18,12 @@ import (
 	"context"
 	"crypto/md5"
 	"fmt"
-	"github.com/echovault/sugardb/internal"
-	"github.com/echovault/sugardb/internal/config"
 	"log"
 	"sync"
 	"time"
+
+	"github.com/echovault/sugardb/internal"
+	"github.com/echovault/sugardb/internal/config"
 
 	"github.com/hashicorp/memberlist"
 	"github.com/hashicorp/raft"
@@ -148,7 +149,7 @@ func (m *MemberList) ForwardDeleteKey(ctx context.Context, key string) {
 		NodeMeta: NodeMeta{
 			ServerID: raft.ServerID(m.options.Config.ServerID),
 			RaftAddr: raft.ServerAddress(fmt.Sprintf("%s:%d",
-				m.options.Config.BindAddr, m.options.Config.RaftBindPort)),
+				m.options.Config.RaftAdvertiseAddr, m.options.Config.RaftAdvertisePort)),
 		},
 	})
 }
@@ -165,7 +166,7 @@ func (m *MemberList) ForwardDataMutation(ctx context.Context, cmd []byte) {
 		NodeMeta: NodeMeta{
 			ServerID: raft.ServerID(m.options.Config.ServerID),
 			RaftAddr: raft.ServerAddress(fmt.Sprintf("%s:%d",
-				m.options.Config.BindAddr, m.options.Config.RaftBindPort)),
+				m.options.Config.RaftAdvertiseAddr, m.options.Config.RaftAdvertisePort)),
 		},
 	})
 }

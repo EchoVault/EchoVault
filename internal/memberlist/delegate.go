@@ -18,12 +18,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"time"
+
 	"github.com/echovault/sugardb/internal"
 	"github.com/echovault/sugardb/internal/config"
 	"github.com/hashicorp/memberlist"
 	"github.com/hashicorp/raft"
-	"log"
-	"time"
 )
 
 type Delegate struct {
@@ -50,8 +51,8 @@ func (delegate *Delegate) NodeMeta(limit int) []byte {
 	meta := NodeMeta{
 		ServerID: raft.ServerID(delegate.options.config.ServerID),
 		RaftAddr: raft.ServerAddress(
-			fmt.Sprintf("%s:%d", delegate.options.config.RaftBindAddr, delegate.options.config.RaftBindPort)),
-		MemberlistAddr: fmt.Sprintf("%s:%d", delegate.options.config.BindAddr, delegate.options.config.DiscoveryPort),
+			fmt.Sprintf("%s:%d", delegate.options.config.RaftAdvertiseAddr, delegate.options.config.RaftAdvertisePort)),
+		MemberlistAddr: fmt.Sprintf("%s:%d", delegate.options.config.AdvertiseAddr, delegate.options.config.DiscoveryPort),
 	}
 
 	b, err := json.Marshal(&meta)
