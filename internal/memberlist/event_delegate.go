@@ -15,9 +15,9 @@
 package memberlist
 
 import (
-	"encoding/json"
-	"github.com/hashicorp/memberlist"
 	"log"
+
+	"github.com/hashicorp/memberlist"
 )
 
 type EventDelegate struct {
@@ -42,23 +42,32 @@ func (eventDelegate *EventDelegate) NotifyJoin(node *memberlist.Node) {
 }
 
 // NotifyLeave implements EventDelegate interface
+// Note: This is called for both graceful leaves and node failures.
+// We do NOT remove the node from Raft here to allow nodes to rejoin after maintenance.
+// Raft will handle unreachable nodes through its own timeout mechanisms.
 func (eventDelegate *EventDelegate) NotifyLeave(node *memberlist.Node) {
 	eventDelegate.options.decrementNodes()
 
-	var meta NodeMeta
+	// Commented out automatic Raft removal to support maintenance scenarios
+	// If you need to permanently remove a node, use a manual admin command
+	/*
+		var meta NodeMeta
 
-	err := json.Unmarshal(node.Meta, &meta)
+		err := json.Unmarshal(node.Meta, &meta)
 
-	if err != nil {
-		log.Println("Could not get leaving node's metadata.")
-		return
-	}
+		if err != nil {
+			log.Println("Could not get leaving node's metadata.")
+			return
+		}
 
-	err = eventDelegate.options.removeRaftServer(meta)
+		err = eventDelegate.options.removeRaftServer(meta)
 
-	if err != nil {
-		log.Println(err)
-	}
+		if err != nil {
+			log.Println(err)
+		}
+	*/
+
+	log.Printf("Node %s left the memberlist (but remains in Raft for potential rejoin)\n", node.Name)
 }
 
 // NotifyUpdate implements EventDelegate interface

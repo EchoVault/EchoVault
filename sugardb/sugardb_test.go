@@ -85,7 +85,9 @@ func setupServer(
 	conf.DataDir = dataDir
 	conf.ForwardCommand = forwardCommand
 	conf.BindAddr = bindAddr
-	conf.JoinAddr = joinAddr
+	if joinAddr != "" {
+		conf.JoinAddr = []string{joinAddr}
+	}
 	conf.Port = uint16(port)
 	conf.ServerID = serverId
 	conf.DiscoveryPort = uint16(discoveryPort)

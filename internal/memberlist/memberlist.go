@@ -18,11 +18,12 @@ import (
 	"context"
 	"crypto/md5"
 	"fmt"
-	"github.com/echovault/sugardb/internal"
-	"github.com/echovault/sugardb/internal/config"
 	"log"
 	"sync"
 	"time"
+
+	"github.com/echovault/sugardb/internal"
+	"github.com/echovault/sugardb/internal/config"
 
 	"github.com/hashicorp/memberlist"
 	"github.com/hashicorp/raft"
@@ -68,6 +69,8 @@ func (m *MemberList) MemberListInit(ctx context.Context) {
 	cfg.Name = m.options.Config.ServerID
 	cfg.BindAddr = m.options.Config.BindAddr
 	cfg.BindPort = int(m.options.Config.DiscoveryPort)
+	cfg.AdvertiseAddr = m.options.Config.AdvertiseAddr
+	cfg.AdvertisePort = int(m.options.Config.DiscoveryPort)
 	cfg.Delegate = NewDelegate(DelegateOpts{
 		config:         m.options.Config,
 		broadcastQueue: m.broadcastQueue,
@@ -105,11 +108,11 @@ func (m *MemberList) MemberListInit(ctx context.Context) {
 		log.Fatal(err)
 	}
 
-	if m.options.Config.JoinAddr != "" {
+	if len(m.options.Config.JoinAddr) > 0 {
 		backoffPolicy := internal.RetryBackoff(retry.NewFibonacci(1*time.Second), 5, 200*time.Millisecond, 0, 0)
 
 		err = retry.Do(ctx, backoffPolicy, func(ctx context.Context) error {
-			_, err = list.Join([]string{m.options.Config.JoinAddr})
+			_, err = list.Join(m.options.Config.JoinAddr)
 			if err != nil {
 				return retry.RetryableError(err)
 			}
@@ -130,7 +133,7 @@ func (m *MemberList) broadcastRaftAddress() {
 		NodeMeta: NodeMeta{
 			ServerID: raft.ServerID(m.options.Config.ServerID),
 			RaftAddr: raft.ServerAddress(fmt.Sprintf("%s:%d",
-				m.options.Config.RaftBindAddr, m.options.Config.RaftBindPort)),
+				m.options.Config.RaftAdvertiseAddr, m.options.Config.RaftAdvertisePort)),
 		},
 	}
 	m.broadcastQueue.QueueBroadcast(&msg)
@@ -148,7 +151,7 @@ func (m *MemberList) ForwardDeleteKey(ctx context.Context, key string) {
 		NodeMeta: NodeMeta{
 			ServerID: raft.ServerID(m.options.Config.ServerID),
 			RaftAddr: raft.ServerAddress(fmt.Sprintf("%s:%d",
-				m.options.Config.BindAddr, m.options.Config.RaftBindPort)),
+				m.options.Config.RaftAdvertiseAddr, m.options.Config.RaftAdvertisePort)),
 		},
 	})
 }
@@ -165,7 +168,7 @@ func (m *MemberList) ForwardDataMutation(ctx context.Context, cmd []byte) {
 		NodeMeta: NodeMeta{
 			ServerID: raft.ServerID(m.options.Config.ServerID),
 			RaftAddr: raft.ServerAddress(fmt.Sprintf("%s:%d",
-				m.options.Config.BindAddr, m.options.Config.RaftBindPort)),
+				m.options.Config.RaftAdvertiseAddr, m.options.Config.RaftAdvertisePort)),
 		},
 	})
 }

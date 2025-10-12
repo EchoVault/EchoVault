@@ -96,7 +96,7 @@ func (r *Raft) RaftInit(ctx context.Context) {
 	}
 
 	bindAddr := fmt.Sprintf("%s:%d", conf.RaftBindAddr, conf.RaftBindPort)
-	advertiseAddr, err := net.ResolveTCPAddr("tcp", bindAddr)
+	advertiseAddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", conf.RaftAdvertiseAddr, conf.RaftAdvertisePort))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -140,12 +140,13 @@ func (r *Raft) RaftInit(ctx context.Context) {
 
 	if conf.BootstrapCluster {
 		// Error can be safely ignored if we're already leader
+		address := raft.ServerAddress(fmt.Sprintf("%s:%d", conf.RaftAdvertiseAddr, conf.RaftAdvertisePort))
 		_ = raftServer.BootstrapCluster(raft.Configuration{
 			Servers: []raft.Server{
 				{
 					Suffrage: raft.Voter,
 					ID:       raft.ServerID(conf.ServerID),
-					Address:  raft.ServerAddress(conf.RaftBindAddr),
+					Address:  address,
 				},
 			},
 		}).Error()
